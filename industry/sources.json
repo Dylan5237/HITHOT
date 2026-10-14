@@ -1,5 +1,5 @@
 {
-  "$comment": "医信AI热点的示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改、试抓和暂停。字段说明见 docs/customize.md 与 docs/sources.md。\n\n本站只收医疗信息化里的 AI 进展，所以信源分三档：\n1) 已实测可直接抓取的 RSS（本机 2026-10-14 抓取验证，均返回真实条目）——开箱即用。\n2) 标准组织官方源（HL7）——T1 一手。\n3) 国内官方一手（国家医保局等）：原站对大陆境外/程序化访问返回 412，或列表由 JS 注入、原始 HTML 里 <ul> 为空，普通 web_list 选择器取不到内容。这类必须经 Jina Reader 渲染（url 写成 https://r.jina.ai/https://目标站/路径，并在 .env 配置 JINA_API_KEY，按次计费）。下面这几个的 itemSelector 是按原站真实 DOM 结构写的，但没有 JINA_API_KEY 就无法实测，导入后请先在后台“信源 → 预览抓取”核对确实抓到的是文章而不是导航，再正式启用；没有 key 时它们会持续失败，可在后台暂停。\n\n国家卫健委（nhc.gov.cn）、国家药监局（nmpa.gov.cn）、中国信通院（caict.ac.cn）同样被 412 拦截，且未能读到真实列表 DOM，因此不在这里凭猜测写选择器——拿到 JINA_API_KEY 后请在后台新建并用“预览抓取”确认。\n国内厂商官网（讯飞医疗、联影智能、东软、卫宁健康、创业慧康、东华医为、数坤、深睿等）的新闻列表全部是 JS 渲染或 404，同样需要在后台配 Jina 后试抓。\nHC3i 中国数字医疗网（hc3i.cn）内容停在 2020-12，news.hc3i.cn 域名已不存在，已排除。\n动脉网、健康界、36氪医疗、丁香园为纯前端渲染且无 RSS；它们的公众号需要极致了（DAJIALA_KEY）与真实 ghid，未取得前不写入。",
+  "$comment": "医信AI热点的示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改、试抓和暂停。字段说明见 docs/customize.md 与 docs/sources.md。\n\n本站只收医疗信息化里的 AI 进展，这里只保留 2026-10-14 本机实测能供对题内容的：HIT专家网（200；11 条中 8 条医疗、2 条医疗+AI）、HL7 International Blog 与 HL7 Europe（各约 10 条，约四成医疗，标准组织一手）。\n\n国家医保局三栏（医保数智库 / 政策法规 / 医保动态）页面可直连（200，不是 412），文章链接也确实写在原始 HTML 里，但藏在 <script type=\"text/xml\"><datastore> 的 <record><![CDATA[<li>…</li>]]></record> 中，页面上可见的 <div class=\"dfyb-con\"><ul> 是空的，所以 parseMode \"html\" 的选择器取不到；该 CMS 的 /module/web/jpage/dataproxy.jsp 分页端点用 GET 只回 54 字节空白（要 XHR POST）。这三条必须经 Jina Reader 渲染（.env 配 JINA_API_KEY，按次计费），没有 key 就会持续失败，导入后请在后台暂停。RSSHub 没有 nhsa 路由，自建 RSSHub 替代不了它们。\n\n自建 RSSHub 后可接的官方源（路由已对照 RSSHub 仓库核实）：国家药监局 /gov/nmpa/ylqx/ylqxggtg（医疗器械公告通告，AI 三类证审批在这里）与 /gov/nmpa/xxgk/ggtg；中国信通院 /gov/caict/bps（蓝皮书）与 /gov/caict/qwsj（权威数据）。这两站直连均 412，只能由 RSSHub 在服务器侧抓；接入前先用后台“预览抓取”核对，确认抓到的是文章而不是导航。\n\n已按实测剔除：雷锋网（21 条中医疗+AI 为 0）、钛媒体（13 条中医疗+AI 为 0）——泛科技媒体只会白烧 prefilter 的付费额度；Hay on FHIR（403 浏览器验证页，抓不到）。\n实测不可用、故不写入：国家卫健委 nhc.gov.cn（412）；动脉网 vcbeat.top/feed 返回的是 Nuxt SSR 首页而非 RSS（0 个 <item>），vbdata.cn/intelList 客户端渲染，只有 SSR 首页里带约 7 条 intelDetail 真链接，量小且条目内第一个 a 是无 href 的来源名，选择器脆弱；健康界 cn-healthcare.com/feed 404，RSSHub 那个 cn-healthcare 路由依赖的 articlelist API 现在回 system error；CHIMA chima.org.cn 列表 JS 加载（原始 HTML 只有导航）；中国政府网 gov.cn/zhengce/zuixin.htm 只有 894B 空壳；生物谷、卫宁健康 404；极客公园有 RSS 但同属泛科技噪声。rsshub.app 公共实例从本机不可达（连接失败），所以走服务器自建。\n厂商官网（讯飞医疗、联影智能、东软、卫宁健康、创业慧康、东华医为、数坤、深睿等）新闻列表全部是 JS 渲染或 404。公众号源需要极致了（DAJIALA_KEY）与真实 ghid，未取得前不写入。",
   "sources": [
     {
       "id": "rss-hit180",
@@ -58,66 +58,6 @@
       "interval_minutes": 240,
       "tags": [
         "标准组织"
-      ],
-      "site_fulltext": false,
-      "syndicate_fulltext": false
-    },
-    {
-      "id": "rss-fhirblog",
-      "name": "Hay on FHIR",
-      "kind": "rss",
-      "config": {
-        "feedUrl": "https://fhirblog.com/feed/",
-        "_aihot": {
-          "initialBackfillLimit": 8
-        }
-      },
-      "tier": "T2",
-      "participation_mode": "editorial",
-      "interval_minutes": 360,
-      "tags": [
-        "个人",
-        "互操作"
-      ],
-      "site_fulltext": false,
-      "syndicate_fulltext": false
-    },
-    {
-      "id": "rss-leiphone",
-      "name": "雷锋网",
-      "kind": "rss",
-      "config": {
-        "feedUrl": "https://www.leiphone.com/feed",
-        "_aihot": {
-          "initialBackfillLimit": 20
-        }
-      },
-      "tier": "T2",
-      "participation_mode": "editorial",
-      "interval_minutes": 60,
-      "tags": [
-        "综合AI媒体",
-        "国内"
-      ],
-      "site_fulltext": false,
-      "syndicate_fulltext": false
-    },
-    {
-      "id": "rss-tmtpost",
-      "name": "钛媒体",
-      "kind": "rss",
-      "config": {
-        "feedUrl": "https://www.tmtpost.com/feed",
-        "_aihot": {
-          "initialBackfillLimit": 20
-        }
-      },
-      "tier": "T2",
-      "participation_mode": "editorial",
-      "interval_minutes": 60,
-      "tags": [
-        "综合科技媒体",
-        "国内"
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
