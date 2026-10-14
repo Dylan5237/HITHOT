@@ -209,6 +209,15 @@
       "definition": "CDSS 临床决策支持系统：知识库与模型路线、院内落地效果与评价标准的动态。"
     },
     {
+      "slug": "medical-agent",
+      "name": "医疗智能体",
+      "group": "field",
+      "tags": [
+        "Agent"
+      ],
+      "definition": "医疗智能体与 Agent 编排：问诊、病历书写、随访与院内流程自动化的智能体产品、评测与落地边界。"
+    },
+    {
       "slug": "emr",
       "name": "电子病历",
       "group": "field",

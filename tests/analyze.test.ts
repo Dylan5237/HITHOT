@@ -58,7 +58,7 @@ const provider = await stub((_hit, req) => {
     if (marker === "SENSITIVE") return new Reply(400, { contentFilter: [{ level: 1, role: "user" }], error: { code: "1301", message: "系统检测到输入或生成内容可能包含不安全或敏感内容" } });
     return answer({ itemType: "product_launch", authorRole: "principal", tags: ["产品发布", "医疗大模型", "Agent", "不存在的标签"], editorialJudgment: `理由 ${marker}`, titleZh: `理解标题 ${marker}`, summaryZh: `理解摘要 ${marker}。第二句补充一个关键数字。` });
   }
-  if (step === "structure") return answer({ category: "product", tags: ["产品发布", "医疗大模型"], subjects: ["winning", "unknown-co"], scope: "single", fact: { title: `事实 ${marker}`, subject: "某公司", action: "发布", object: "产品", occurredAt: null, evidence: "a vendor released a product", conditions: [] } });
+  if (step === "structure") return answer({ category: "product", tags: ["产品发布", "医疗大模型"], subjects: ["winning", "unknown-co"], scope: "single", fact: { title: `事实 ${marker}`, subject: "某公司", action: "发布", object: "产品", occurredAt: null, evidence: "a vendor released a medical AI product", conditions: [] } });
   return answer(`title_zh: 翻译标题 ${marker}\nsummary_zh: 翻译摘要 ${marker}。第二句补充影响。`);
 });
 pointModels(provider.url);
@@ -99,7 +99,7 @@ test("a selected item: prefilter, two scores, the content understanding and the 
   assert.deepEqual(r.subjects, ["winning"]);
   assert.deepEqual([r.output.writer, r.output.itemType, r.output.prefilter.label, r.output.fact.title], ["understand", "product_launch", "PASS", "事实 CLEAR"]);
   assert.equal(r.output.scope, "single");
-  assert.equal(r.output.fact.evidence, "a vendor released a product");
+  assert.equal(r.output.fact.evidence, "a vendor released a medical AI product");
   const score = requests.find((q) => q.marker === "CLEAR" && q.step === "score")!;
   assert.match(score.user, /【标题】\nCLEAR product launch/, "the score reads the original title, before any writing");
 });

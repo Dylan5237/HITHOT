@@ -28,7 +28,7 @@ after(async () => {
 const watch = "https://www.youtube.com/watch?v=COJAZQM1aeQ";
 const shorts = "https://www.youtube.com/shorts/FByNauagcbY";
 const videoUrls = [watch, shorts, "https://m.youtube.com/watch?v=COJAZQM1aeQ", "https://youtu.be/COJAZQM1aeQ", "https://www.youtube.com/embed/COJAZQM1aeQ", "https://vimeo.com/1105244173", "https://player.vimeo.com/video/1105244173"];
-const playerText = "Back Skip navigation Search Search with your voice Sign in Video Build an App With Claude Design Tap to unmute Watch later Share Copy link Info Shopping If playback does not begin shortly, try restarting your device. Video unavailable. You are signed out. Videos you watch may be added to the TV watch history and influence TV recommendations. Cancel Confirm. I Tried The LAZIEST Way to Make Money With AI. ";
+const playerText = "Back Skip navigation Search Search with your voice Sign in Video Build an App With FHIR Design Tap to unmute Watch later Share Copy link Info Shopping If playback does not begin shortly, try restarting your device. Video unavailable. You are signed out. Videos you watch may be added to the TV watch history and influence TV recommendations. Cancel Confirm. I Tried The LAZIEST Way to Write Clinical Notes With AI. ";
 const playerHtml = `<html><head><title>Watch video</title></head><body><article><p>${playerText.repeat(3)}</p></article></body></html>`;
 const feedBody = "The publisher supplied an actual explanatory text alongside this video. ".repeat(8);
 const entry = (url: string, fields = "") => `<entry><id>entry:${url}</id><title>A video update</title><published>2026-10-03T00:00:00Z</published><link href="${url.replaceAll("&", "&amp;")}"/>${fields}</entry>`;

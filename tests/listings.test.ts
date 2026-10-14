@@ -23,7 +23,7 @@ const item = (title: string, link: string, daysAgo: number) =>
   `<item><title>${title}</title><link>${link}</link><guid>${link}</guid><pubDate>${new Date(Date.now() - daysAgo * DAY).toUTCString()}</pubDate><description>${title} summary</description></item>`;
 const feeds: Record<string, string> = {
   // developers.openai.com lists one video twice, under two titles.
-  "/dup.xml": [item(`DevDay — optimization breakout ${T}`, `https://example.org/watch-${T}`, 0.1), item(`Balance accuracy, latency, and cost ${T}`, `https://example.org/watch-${T}`, 0.1)].join(""),
+  "/dup.xml": [item(`HIMSS — 电子病历 breakout ${T}`, `https://example.org/watch-${T}`, 0.1), item(`平衡准确性、时延与成本 ${T}`, `https://example.org/watch-${T}`, 0.1)].join(""),
   "/notes.xml": ["september-24", "september-23", "september-22"].map((d, i) => item(`Release notes — ${d} ${T}`, `https://example.org/notes-${T}/overview#${d}`, 0.1 + i)).join(""),
 };
 // A feed that loses a character here and there on every load, sent as two or three U+FFFD, in titles and
