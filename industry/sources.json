@@ -1,5 +1,5 @@
 {
-  "$comment": "医信AI热点的示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改、试抓和暂停。字段说明见 docs/customize.md 与 docs/sources.md。\n\n本站只收医疗信息化里的 AI 进展，这里只保留 2026-10-14 本机实测能供对题内容的：HIT专家网（200；11 条中 8 条医疗、2 条医疗+AI）、HL7 International Blog 与 HL7 Europe（各约 10 条，约四成医疗，标准组织一手）。\n\n国家医保局三栏（医保数智库 / 政策法规 / 医保动态）页面可直连（200，不是 412），文章链接也确实写在原始 HTML 里，但藏在 <script type=\"text/xml\"><datastore> 的 <record><![CDATA[<li>…</li>]]></record> 中，页面上可见的 <div class=\"dfyb-con\"><ul> 是空的，所以 parseMode \"html\" 的选择器取不到；该 CMS 的 /module/web/jpage/dataproxy.jsp 分页端点用 GET 只回 54 字节空白（要 XHR POST）。这三条必须经 Jina Reader 渲染（.env 配 JINA_API_KEY，按次计费），没有 key 就会持续失败，导入后请在后台暂停。RSSHub 没有 nhsa 路由，自建 RSSHub 替代不了它们。\n\n自建 RSSHub 后可接的官方源（路由已对照 RSSHub 仓库核实）：国家药监局 /gov/nmpa/ylqx/ylqxggtg（医疗器械公告通告，AI 三类证审批在这里）与 /gov/nmpa/xxgk/ggtg；中国信通院 /gov/caict/bps（蓝皮书）与 /gov/caict/qwsj（权威数据）。这两站直连均 412，只能由 RSSHub 在服务器侧抓；接入前先用后台“预览抓取”核对，确认抓到的是文章而不是导航。\n\n已按实测剔除：雷锋网（21 条中医疗+AI 为 0）、钛媒体（13 条中医疗+AI 为 0）——泛科技媒体只会白烧 prefilter 的付费额度；Hay on FHIR（403 浏览器验证页，抓不到）。\n实测不可用、故不写入：国家卫健委 nhc.gov.cn（412）；动脉网 vcbeat.top/feed 返回的是 Nuxt SSR 首页而非 RSS（0 个 <item>），vbdata.cn/intelList 客户端渲染，只有 SSR 首页里带约 7 条 intelDetail 真链接，量小且条目内第一个 a 是无 href 的来源名，选择器脆弱；健康界 cn-healthcare.com/feed 404，RSSHub 那个 cn-healthcare 路由依赖的 articlelist API 现在回 system error；CHIMA chima.org.cn 列表 JS 加载（原始 HTML 只有导航）；中国政府网 gov.cn/zhengce/zuixin.htm 只有 894B 空壳；生物谷、卫宁健康 404；极客公园有 RSS 但同属泛科技噪声。rsshub.app 公共实例从本机不可达（连接失败），所以走服务器自建。\n厂商官网（讯飞医疗、联影智能、东软、卫宁健康、创业慧康、东华医为、数坤、深睿等）新闻列表全部是 JS 渲染或 404。公众号源需要极致了（DAJIALA_KEY）与真实 ghid，未取得前不写入。",
+  "$comment": "医信AI热点的示范信源：首次启动时导入（scripts/seed.ts，ON CONFLICT DO NOTHING，已存在的不会被覆盖）。之后在后台“信源”里新建、修改、试抓和暂停。字段说明见 docs/customize.md 与 docs/sources.md。\n\n本站只收医疗信息化里的 AI 进展，这里只保留 2026-10-14 实测能供对题内容的四个源：\n1) HIT专家网 https://www.hit180.com/feed —— 200、application/rss+xml、10 条。**响应很慢，实测约 25 秒**，抓超时不要当成死链。11 条里 8 条医疗、2 条医疗+AI，是唯一稳定对题的国内行业媒体。\n2) CHIMA 中国医院协会信息专业委员会 —— 2026-10-14 新增，已用本仓库 packages/backend/src/sources/web-list.ts 的 fromHtml() 在真实 HTML 上验证：**20/20 条全部解析成功，日期齐全（span.date 是完整 ISO 日期）、标题不截断（a.dy_title 文本即全称）**。关键是列表页要用 /News/Columns/ListAll?IsTop=1&PageSize=20&page=1；栏目页 /Html/News/Columns/<id>/Index0.html 才是 JS 加载、只有导航链接，不要用那个。文章页 h1.article_title + div.article_cont 是服务端渲染的全文，detail.summarySelector 取来做摘要。会议通知类噪声用 ingestNoiseFilter.dropMarkersTitleOnly 挡掉。\n3) HL7 International Blog、HL7 Europe —— 各约 10 条，约四成医疗，标准组织一手。海外源从服务器可直连，不需要代理。\n\n国家医保局三栏（医保数智库 / 政策法规 / 医保动态）已置 enabled=false：页面可直连（200，不是 412），文章链接也确实写在原始 HTML 里，但藏在 <script type=\"text/xml\"><datastore> 的 <record><![CDATA[<li>…</li>]]></record> 中，页面上可见的 <div class=\"dfyb-con\"><ul> 是空的，所以 parseMode \"html\" 的选择器取不到；该 CMS 的 /module/web/jpage/dataproxy.jsp 分页端点用 GET 只回 54 字节空白（要 XHR POST）。这三条必须经 Jina Reader 渲染（.env 配 JINA_API_KEY，按次计费）才能用；拿到 key 后把 enabled 改回 true，并先在后台“预览抓取”核对抓到的是文章而不是导航。RSSHub 没有 nhsa 路由，自建 RSSHub 替代不了它们。\n\n自建 RSSHub 这条路已在服务器上实测失败（2026-10-14，0/4 路由可用），不要再试：国家药监局 /gov/nmpa/ylqx/ylqxggtg 与 /gov/nmpa/xxgk/ggtg 的上游对阿里云机房 IP 同样回 **412**（路由是纯 HTTP，无绕过手段）；中国信通院 /gov/caict/bps 与 /gov/caict/qwsj 需要 patchright 无头 chromium（build 1243），diygod/rsshub 镜像里没带且 node_modules/patchright 被裁剪掉 cli.js，三次补装全失败。所以国内官方一手（卫健委 / 药监局 / 信通院 / 医保局）目前**只能靠 Jina，或者换信源**。\n\n已按实测剔除：雷锋网（21 条中医疗+AI 为 0）、钛媒体（13 条中医疗+AI 为 0）——泛科技媒体只会白烧 prefilter 的付费额度；Hay on FHIR（403 浏览器验证页，抓不到）。\n实测不可用、故不写入：国家卫健委 nhc.gov.cn（412）、器审中心 cmde.org.cn（202 JS 挑战）、中国医院协会 cha.org.cn（403）、亿欧 iyiou.com（202）；动脉网 vcbeat.top/feed 返回的是 Nuxt SSR 首页而非 RSS（0 个 <item>），vbdata.cn/intelList 客户端渲染；健康界 cn-healthcare.com 首页是纯 JS 壳（23KB、0 个链接）、/feed 404，RSSHub 那个 cn-healthcare 路由依赖的 articlelist API 现在回 system error；中国政府网 gov.cn/zhengce/zuixin/ 200 但列表由内联 JS 模板 listArrP[i].URL 注入，原始 HTML 里没有条目；生物谷、卫宁健康 404；极客公园有 RSS 但同属泛科技噪声。rsshub.app 公共实例不可达。\n厂商官网（讯飞医疗、联影智能、东软、卫宁健康、创业慧康、东华医为、数坤、深睿等）新闻列表全部是 JS 渲染或 404。公众号源需要极致了（DAJIALA_KEY）与真实 ghid，未取得前不写入。",
   "sources": [
     {
       "id": "rss-hit180",
@@ -63,6 +63,50 @@
       "syndicate_fulltext": false
     },
     {
+      "id": "web-chima",
+      "name": "CHIMA · 中国医院协会信息专业委员会",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.chima.org.cn/News/Columns/ListAll?IsTop=1&PageSize=20&page=1",
+        "parseMode": "html",
+        "itemSelector": "ul.column_list li.box_li",
+        "linkSelector": "a.dy_title",
+        "titleSelector": "a.dy_title",
+        "publishedAtSelector": "span.date",
+        "publishedAtUtcOffset": "+08:00",
+        "allowUrlPrefixes": [
+          "https://www.chima.org.cn/Html/News/Articles/"
+        ],
+        "ingestNoiseFilter": {
+          "dropMarkersTitleOnly": [
+            "关于举办",
+            "报名",
+            "征稿",
+            "征文",
+            "招聘",
+            "讣告"
+          ]
+        },
+        "detail": {
+          "summarySelector": "div.article_cont",
+          "maxFetches": 12
+        },
+        "_aihot": {
+          "initialBackfillLimit": 20
+        }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "tags": [
+        "行业组织",
+        "国内",
+        "医院信息化"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
       "id": "web-nhsa-digital",
       "name": "国家医保局 · 医保数智库",
       "kind": "web_list",
@@ -91,7 +135,8 @@
         "需Jina"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "web-nhsa-policy",
@@ -122,7 +167,8 @@
         "需Jina"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "web-nhsa-news",
@@ -153,7 +199,8 @@
         "需Jina"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     }
   ]
 }
