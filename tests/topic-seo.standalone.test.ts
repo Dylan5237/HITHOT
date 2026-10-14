@@ -6,9 +6,9 @@ import { test } from "node:test";
 import { siteUrl, topicLd } from "../apps/web/app/lib/seo.ts";
 
 const topic = {
-  path: "/topics/tutorials",
-  name: "教程实践 最新动态",
-  description: "值得阅读的教程与实践。",
+  path: "/topics/practice",
+  name: "观点实践 最新动态",
+  description: "值得阅读的观点与实践。",
   dateModified: "2026-10-02T08:00:00.000Z",
   lists: [] as Array<{ name: string; entries: Array<{ title: string; href: string | null }> }>,
 };
@@ -16,7 +16,7 @@ const topic = {
 test("a topic page is a collection at its own address", () => {
   const json = topicLd(topic);
   assert.equal(json["@type"], "CollectionPage");
-  assert.equal(json.url, `${siteUrl()}/topics/tutorials`);
+  assert.equal(json.url, `${siteUrl()}/topics/practice`);
   assert.equal(json.dateModified, topic.dateModified);
   // Without a list it makes no empty claim.
   assert.equal("mainEntity" in json, false);
@@ -25,13 +25,13 @@ test("a topic page is a collection at its own address", () => {
 
 test("a list the page shows keeps its ordered entry names and public story links", () => {
   const json = topicLd({ ...topic, lists: [{ name: "大事记", entries: [
-    { title: "正式发布", href: "/story/model-release" },
+    { title: "正式发布", href: "/story/product-launch" },
     { title: "历史节点", href: null },
   ] }] });
   const list = json.mainEntity as { numberOfItems: number; itemListElement: unknown[] };
   assert.equal(list.numberOfItems, 2);
   assert.deepEqual(list.itemListElement, [
-    { "@type": "ListItem", position: 1, name: "正式发布", url: `${siteUrl()}/story/model-release` },
+    { "@type": "ListItem", position: 1, name: "正式发布", url: `${siteUrl()}/story/product-launch` },
     { "@type": "ListItem", position: 2, name: "历史节点" },
   ]);
 });

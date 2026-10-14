@@ -19,9 +19,9 @@ const pages: Record<string, () => string> = {
   // The Verge's feed: a teaser that ends in "Read the full story", next to a post whose feed carries it whole.
   "/verge.xml": () =>
     `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">` +
-    `<entry><title>AMD is acquiring World Labs</title><link rel="alternate" href="https://example.org/amd-world-labs"/><published>2026-09-28T17:31:35-04:00</published>` +
-    `<summary type="html">AMD announced today that it's acquiring World Labs.</summary>` +
-    `<content type="html"><![CDATA[<p>${"AMD announced today that it is acquiring World Labs in an all-stock deal. ".repeat(8)}</p><p>Read the full story at The Verge.</p>]]></content></entry>` +
+    `<entry><title>Neusoft is acquiring Yidu Tech</title><link rel="alternate" href="https://example.org/neusoft-yidu"/><published>2026-09-28T17:31:35-04:00</published>` +
+    `<summary type="html">Neusoft announced today that it's acquiring Yidu Tech.</summary>` +
+    `<content type="html"><![CDATA[<p>${"Neusoft announced today that it is acquiring Yidu Tech in an all-stock deal. ".repeat(8)}</p><p>Read the full story at The Verge.</p>]]></content></entry>` +
     `<entry><title>A whole post</title><link rel="alternate" href="https://example.org/whole"/><published>2026-09-28T10:00:00Z</published>` +
     `<content type="html"><![CDATA[<p>${"The feed carries this post whole, paragraph after paragraph. ".repeat(30)}</p>]]></content></entry></feed>`,
   // A podcast whose feed summary is the whole episode note, in RSS and in Atom.
@@ -55,16 +55,16 @@ after(() => new Promise<void>((resolve) => server.close(() => resolve())));
 test("Jina card links become posts with their own titles", () => {
   const md = [
     "[Skip to main content](http://example.org/blog/#main)",
-    "[![Image 1: hero](https://cdn.example.org/a.jpg) ##### 智元发布GE-Act 2.0 新闻资讯 | 2026-09-20](https://example.org/blog/220.html \"智元发布GE-Act 2.0\")",
-    "[![Image 2](https://cdn.example.org/b.png) ##### 小米18 Pro Max 测评 尾巴视频](http://example.org/blog/784.html)",
+    "[![Image 1: hero](https://cdn.example.org/a.jpg) ##### 卫宁健康发布WiNEX 2.0 新闻资讯 | 2026-09-20](https://example.org/blog/220.html \"卫宁健康发布WiNEX 2.0\")",
+    "[![Image 2](https://cdn.example.org/b.png) ##### 联影医疗uCT新品测评 尾巴视频](http://example.org/blog/784.html)",
     "[![Image 3](https://cdn.example.org/c.png)](https://example.org/blog/carousel.html)",
     "# [Introducing v6](http://example.org/blog/introducing-v6)",
     "[2026](http://example.org/blog/2026) [Algorithms & Theory](http://example.org/blog/label/algorithms) [Next page](http://example.org/blog/page/2)",
   ].join("\n\n");
   const out = fromMarkdown(md, "https://example.org", source({ url: "https://r.jina.ai/http://example.org/blog/", allowUrlPrefixes: ["https://example.org/blog/"] }));
   assert.deepEqual(out, [
-    { url: "https://example.org/blog/220.html", title: "智元发布GE-Act 2.0" },
-    { url: "https://example.org/blog/784.html", title: "小米18 Pro Max 测评 尾巴视频" },
+    { url: "https://example.org/blog/220.html", title: "卫宁健康发布WiNEX 2.0" },
+    { url: "https://example.org/blog/784.html", title: "联影医疗uCT新品测评 尾巴视频" },
     { url: "https://example.org/blog/introducing-v6", title: "Introducing v6" },
   ]);
 });
@@ -137,7 +137,7 @@ test("feed text that only teases the article is a summary: the page is fetched b
   const [teaser, whole] = read.candidates;
   assert.equal(teaser!.bodyStatus, "pending");
   assert.equal(teaser!.bodyText, null);
-  assert.equal(teaser!.excerpt, "AMD announced today that it's acquiring World Labs.");
+  assert.equal(teaser!.excerpt, "Neusoft announced today that it's acquiring Yidu Tech.");
   assert.equal(whole!.bodyStatus, "ok");
   assert.ok(whole!.bodyText!.length > 1200);
   // Discussion sources only need what the feed says.
@@ -181,7 +181,7 @@ test("noise words match whatever their case", () => {
   // 笔记本 is noise, but the lower-case exemption agent keeps a post about an Agent product.
   const source = { config: { ingestNoiseFilter: { dropMarkers: ["笔记本", "iphone"], keepIfMatches: ["agent"] } } } as never;
   const c = (title: string, excerpt: string) => ({ url: "https://example.org/a", title, excerpt }) as never;
-  assert.equal(noiseFiltered(c("Manus：正组建团队开发面向国内市场的产品", "与笔记本厂商合作的 Agent 产品"), source), false);
+  assert.equal(noiseFiltered(c("医渡科技：正组建团队开发面向基层医疗的产品", "与笔记本厂商合作的 Agent 产品"), source), false);
   assert.equal(noiseFiltered(c("新款笔记本开售", "首发价 4999 元"), source), true);
   assert.equal(noiseFiltered(c("iPhone 18 开售", ""), source), true);
 });

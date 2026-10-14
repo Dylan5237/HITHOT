@@ -117,7 +117,7 @@ test("another source listing the same article records a discovery, not a revisio
 
 test("an article linking to a tweet is stored separately from the tweet", async () => {
   const tweetId = `${Date.now()}123456`;
-  const url = `https://x.com/openai/status/${tweetId}`;
+  const url = `https://x.com/winninghealth/status/${tweetId}`;
   const tweet = await upsertMaterial({ sourceId: SOURCE, url, title: "Original tweet", via: "fetch" });
   const article = await upsertMaterial({
     sourceId: OTHER, url: `https://example.com/report-${tag()}?related=${url}`, title: "Independent report", via: "fetch",
@@ -127,7 +127,7 @@ test("an article linking to a tweet is stored separately from the tweet", async 
   assert.equal((await state(tweet.articleId)).title, "Original tweet");
   assert.equal((await state(article.articleId)).title, "Independent report");
   const alias = await upsertMaterial({
-    sourceId: OTHER, url: `https://twitter.com/openai/status/${tweetId}`, title: "Tweet alias", via: "fetch",
+    sourceId: OTHER, url: `https://twitter.com/winninghealth/status/${tweetId}`, title: "Tweet alias", via: "fetch",
   });
   assert.equal(alias.created, false);
   assert.equal(alias.articleId, tweet.articleId);
@@ -145,10 +145,10 @@ test("another source reporting an imported article first does not set its baseli
 });
 
 test("a return to an earlier version is not a revision", async () => {
-  // One listing with two cards for one post ("Company Mistral and Mozilla…" / "Mistral and Mozilla…").
+  // One listing with two cards for one post ("Company Epic and Cerner…" / "Epic and Cerner…").
   const url = `https://example.com/two-cards-${tag()}`;
-  const a = { sourceId: SOURCE, url, title: "Company Mistral and Mozilla", excerpt: "card", via: "fetch" as const };
-  const b = { ...a, title: "Mistral and Mozilla" };
+  const a = { sourceId: SOURCE, url, title: "Company Epic and Cerner", excerpt: "card", via: "fetch" as const };
+  const b = { ...a, title: "Epic and Cerner" };
   const first = await upsertMaterial(a);
   assert.equal((await upsertMaterial(b)).revised, true, "a version not seen before is a revision");
   await sql`UPDATE articles SET processing_state = 'analyzed' WHERE id = ${first.articleId}`;
@@ -157,8 +157,8 @@ test("a return to an earlier version is not a revision", async () => {
     assert.equal((await upsertMaterial(b)).revised, false, "and to the current one again");
   }
   const s = await state(first.articleId);
-  assert.deepEqual([s.revision, s.title, s.processing_state], [2, "Mistral and Mozilla", "analyzed"], "nothing to analyse or publish again");
-  assert.equal((await upsertMaterial({ ...a, title: "Mistral and Mozilla, updated" })).revised, true, "a new version still is");
+  assert.deepEqual([s.revision, s.title, s.processing_state], [2, "Epic and Cerner", "analyzed"], "nothing to analyse or publish again");
+  assert.equal((await upsertMaterial({ ...a, title: "Epic and Cerner, updated" })).revised, true, "a new version still is");
   assert.equal((await state(first.articleId)).revision, 3);
 });
 
