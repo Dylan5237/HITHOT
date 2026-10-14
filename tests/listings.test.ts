@@ -33,18 +33,18 @@ const lose = (s: string, at: number, n: number) => s.slice(0, at) + "\uFFFD".rep
 const title = `维密重回上海淮海路，中国市场进入扩店阶段 ${T}`;
 const garbledLoads = [[title, story], [title, lose(story, 120, 3)], [lose(title, 2, 2), lose(story, 700, 2)]];
 let garbledLoad = 0;
-// A trimmed copy of the DeepSeek API changelog (Docusaurus): each date heading, in either of the two
-// label styles the page uses, is followed by the update headings that belong to it.
+// A Docusaurus changelog in the shape captured from the DeepSeek API docs: each date heading, in either
+// of the two label styles the page uses, is followed by the update headings that belong to it.
 const heading = (level: number, id: string, text: string) =>
   `<h${level} class="anchor" id="${id}">${text}<a href="#${id}" class="hash-link" title="${text}的直接链接">\u200b</a></h${level}>`;
 const changelog = `<!doctype html><html><body><article><div class="theme-doc-markdown markdown"><div class="row"><div class="col"><h1>更新日志</h1><hr>
 ${heading(2, "时间-2026-09-10", "时间: 2026-09-10")}
-${heading(3, "deepseek-v41-flash-发布", `DeepSeek-V4.1-Flash 发布 ${T}`)}<p>今天，我们正式发布 DeepSeek-V4.1-Flash 模型。</p>
+${heading(3, "winex-v41-flash-发布", `WiNEX-V4.1-Flash 发布 ${T}`)}<p>今天，我们正式发布 WiNEX-V4.1-Flash 电子病历模块。</p>
 ${heading(2, "时间-2025-12-01", "时间: 2025-12-01")}
-${heading(3, "deepseek-v32", `DeepSeek-V3.2 ${T}`)}<p>DeepSeek-V3.2 正式版上线。</p>
-${heading(3, "deepseek-v32-speciale", `DeepSeek-V3.2-Speciale ${T}`)}<p>DeepSeek-V3.2-Speciale 临时接口上线。</p>
+${heading(3, "winex-v32", `WiNEX-V3.2 ${T}`)}<p>WiNEX-V3.2 正式版上线。</p>
+${heading(3, "winex-v32-专业版", `WiNEX-V3.2-专业版 ${T}`)}<p>WiNEX-V3.2-专业版临时接口上线。</p>
 ${heading(2, "时间2024-05-17", "时间：2024-05-17")}
-${heading(3, "deepseek-chat-4", `deepseek-chat ${T}`)}<p>deepseek-chat 模型升级为 DeepSeek-V2-0517。</p>
+${heading(3, "winex-chat-4", `winex-chat ${T}`)}<p>winex-chat 服务升级为 WiNEX-V2-0517。</p>
 </div></div></div></article></body></html>`;
 const server = http.createServer((req, res) => {
   if (req.url === "/updates/") {
@@ -86,7 +86,7 @@ test("an article a feed lists twice is stored once and stays put across fetches"
   for (let run = 0; run < 3; run++) assert.equal((await collectSource(DUP_SOURCE, { force: true })).status, "ok");
   const rows = await articles(DUP_SOURCE);
   assert.equal(rows.length, 1);
-  assert.deepEqual([rows[0]!.title, rows[0]!.revision], [`DevDay — optimization breakout ${T}`, 1], "the first entry, never revised");
+  assert.deepEqual([rows[0]!.title, rows[0]!.revision], [`HIMSS — 电子病历 breakout ${T}`, 1], "the first entry, never revised");
 });
 
 test("sections of one page are separate articles when the source keeps fragments", async () => {
@@ -111,10 +111,10 @@ test("a changelog's date headings date its updates and are no articles themselve
   assert.deepEqual(
     rows.map((r) => [decodeURIComponent(r.url.replace(/^.*#/, "#")), r.title.replace(` ${T}`, ""), r.published_at?.toISOString()]),
     [
-      ["#deepseek-v41-flash-发布", "DeepSeek-V4.1-Flash 发布", "2026-09-09T16:00:00.000Z"],
-      ["#deepseek-v32", "DeepSeek-V3.2", "2025-11-30T16:00:00.000Z"],
-      ["#deepseek-v32-speciale", "DeepSeek-V3.2-Speciale", "2025-11-30T16:00:00.000Z"],
-      ["#deepseek-chat-4", "deepseek-chat", "2024-05-16T16:00:00.000Z"],
+      ["#winex-v41-flash-发布", "WiNEX-V4.1-Flash 发布", "2026-09-09T16:00:00.000Z"],
+      ["#winex-v32", "WiNEX-V3.2", "2025-11-30T16:00:00.000Z"],
+      ["#winex-v32-专业版", "WiNEX-V3.2-专业版", "2025-11-30T16:00:00.000Z"],
+      ["#winex-chat-4", "winex-chat", "2024-05-16T16:00:00.000Z"],
     ],
   );
 });
