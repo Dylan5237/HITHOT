@@ -2,6 +2,8 @@
 // 网页和后端都读它；改完重新构建（docker compose up --build）即可生效。
 // 域名不在这里：部署时用环境变量 SITE_URL 设置。
 
+import type { Founder } from "@aihot/contracts/site-config";
+
 /**
  * 日报、周报、月报什么时候出（北京时间，HH:mm）：日报收这个时间之前的 24 小时，周报在每个自然周之后的周一出，
  * 月报在每月 1 日出。排程、成刊时间窗口、缺期告警和所有提到时间的文案都读它（public/ 里的文件写占位
@@ -18,31 +20,32 @@ export const EDITION_WHEN = {
 
 export const SITE = {
   /** 站名：导航、页面标题、分享图、RSS、MCP、后台都用它。 */
-  name: "医信AI热点",
+  name: "HITHOT",
   /**
-   * 行业词：拼进默认说法里，比如“医疗AI 日报”“全部医疗AI 动态”。
+   * 行业词：拼进默认说法里，比如“AI 日报”“AI 动态”。
+   * 改成“法律”“HR”“黄金”之类，页面上就会变成“法律日报”“法律动态”。
    */
-  subject: "医疗AI",
+  subject: "医疗信息化",
   /** 首页的完整标题（浏览器标签、搜索结果）。 */
-  homeTitle: "医信AI热点 HIT AI HOT — 医疗信息化 AI 动态 · 每日精选与日报",
+  homeTitle: "HITHOT — 医疗信息化行业动态 · 每日精选与日报",
   /** 主题目录页（/topics）的标题。 */
-  topicsTitle: "医疗AI 主题：厂商与机构、技术方向、内容形态的最新动态",
+  topicsTitle: "医疗信息化主题：监管机构与厂商、建设方向、内容形态的最新动态",
   /** 反馈表单输入框里的示例。 */
-  feedbackExample: "例如：我在搜某个厂商的 AI 产品时遇到……我原本想……",
+  feedbackExample: "例如：我想追踪某省电子病历评级的进展，但搜索“评级”时……",
   /** 反馈页标题下面的一句话。 */
   feedbackLead: "发现 bug、想要的功能、看不顺眼的地方，都可以告诉我们。",
   /** 反馈表单邮箱框里的提示。 */
   feedbackEmailHint: "留下邮箱，我们可以回信联系你",
   /** 一句话介绍：搜索引擎、分享卡片、RSS、llms.txt 会用。 */
-  description: `从一批医疗信息化信源里挑出值得看的 AI 动态，把同一件事的多篇报道归到一起，${EDITION_WHEN.daily} 出一份日报。`,
+  description: `从卫健、医保、药监、数据等政策源，以及国内外医疗 IT 媒体与期刊里挑出值得看的医疗信息化动态，把同一件事的多篇报道归到一起，${EDITION_WHEN.daily} 出一份日报。`,
   /** llms.txt 里一句话介绍下面的一段详细介绍（选填）。 */
-  llmsIntro: "只收医疗信息化里的 AI 进展：政策与标准、审批与准入、产品与应用、医院落地、数据与互操作、研究评测、产业动态、安全与伦理。不含与 AI 无关的一般医疗新闻。",
+  llmsIntro: null as string | null,
   /** 一行小字：分享图、海报下方。 */
-  tagline: "值得关注的医疗 AI 动态",
-  /** 搜索引擎读到的首页结构化数据关键词。 */
-  keywords: ["医疗AI", "医疗信息化", "医疗大模型", "AI辅助诊断", "临床决策支持", "智慧医院", "电子病历", "医疗AI日报", "HIT"] as string[],
+  tagline: "值得关注的医疗信息化动态",
+  /** 搜索引擎读到的关键词（首页结构化数据）。 */
+  keywords: ["医疗信息化", "医疗信息化日报", "智慧医院", "电子病历评级", "互联互通", "医疗 AI", "医保信息化", "HIT 资讯"] as string[],
   /** 网站开始收录的年份（结构化数据的时间范围，选填）。 */
-  since: "2026" as string | null,
+  since: null as string | null,
   /** 界面语言（HTML lang、og:locale）。 */
   locale: "zh-CN",
   /** 默认域名，只在没设置 SITE_URL 时使用。 */
@@ -50,10 +53,10 @@ export const SITE = {
   /** 标准图标（favicon.ico、icon.png、icon-192.png、apple-icon.png、logo.svg）以外也放在网站根目录的图标，site/brand/ 里的文件名（选填）；manifest.webmanifest 或外站引用了它们时用。 */
   rootIcons: [] as string[],
   /**
-   * MCP 工具名的前缀（小写字母、数字、下划线），工具会叫 hitaihot_get_latest、hitaihot_search……
+   * MCP 工具名的前缀（小写字母、数字、下划线），工具会叫 myhot_get_latest、myhot_search……
    * 已经有人接入后就不要再改。
    */
-  mcpPrefix: "hitaihot",
+  mcpPrefix: "hithot",
   /**
    * 公开接口（MCP、OpenAPI、llms.txt）的版本号，只升不降。
    * 改了接口里已有的字段或含义时升主版本，并在部署说明里写清。
@@ -65,16 +68,18 @@ export const SITE = {
   footerNote: "由 AIHOT 开源框架驱动",
   /** 中国大陆网站的 ICP 备案号（选填），填了就显示在侧栏底部和“我的”页底部，并链接到工信部备案系统。 */
   icp: null as string | null,
+  /** 中国大陆网站的公安备案信息（选填），填了显示在侧栏底部和“我的”页底部。 */
+  psb: null as string | null,
   /** 源码的 GitHub 仓库地址（选填），填了就在侧栏底部和“我的”页底部显示“GitHub 开源”。 */
   github: null as string | null,
   /** 结构化数据里的网站运营者（搜索引擎用）。 */
   organization: {
-    name: "医信AI热点",
+    name: "HITHOT",
     /** 创始人（选填）。 */
-    founder: null as null | { name: string; alternateName?: string; jobTitle?: string; description?: string; url?: string },
+    founder: null as Founder | null,
   },
   /** 抓取信源时报上的名字和版本（User-Agent 里用），不要冒用别的站。 */
-  crawlerName: "HitAihotBot/1.0",
+  crawlerName: "HITHOTBot/1.0",
 } as const;
 
 /** 使用规则和隐私说明两页（正文在 pages/ 里）。 */
@@ -142,15 +147,15 @@ export const ABOUT = {
   /** 页面描述（搜索结果、分享卡片）。 */
   description: `关于 ${SITE.name}：${SITE.description}`,
   /** 大标题：第一行正常颜色，第二行强调色。 */
-  headline: ["医疗 AI 每天都有新动静，", "值得看的，只有几条。"] as [string, string],
+  headline: ["政策、评级、产品、项目，每天都有新消息，", "值得医院信息人看的，只有几条。"] as [string, string],
   /** 标题下面的一段话。{sources} 会换成实时的信源数（两边自动加空格，所以 {sources} 两边不写空格）；统计没取到时换成 sourcesFallback。 */
   lead: `${SITE.name} 替你盯着{sources}个信源：抓取、归并、打分、精选，${EDITION_WHEN.daily} 出一份日报。免费，不用注册。`,
-  sourcesFallback: "十几",
+  sourcesFallback: "二十来",
   /** 信源河动画下面的四个环节。 */
   steps: {
-    collect: "官方机构、行业媒体和厂商的订阅源都在看；更新越勤的源看得越勤，最快 15 分钟看一次。",
+    collect: "卫健委、医保局、药监局、数据局等政策发布，国内外医疗 IT 媒体、标准组织和期刊都在看；更新越勤的源看得越勤，最快 15 分钟看一次。",
     store: "抓到的都存下来，同一件事的报道归到一起，热点榜就是从这里算出来的。",
-    select: `模型先看是不是医疗信息化里的 AI 进展、有没有实际信息，再写中文标题、摘要和${ITEM_COPY.reasonLabel}；产品软文和重复转发进不来。`,
+    select: `模型先看是不是医疗信息化的事、有没有实际信息，再写中文标题、摘要和${ITEM_COPY.reasonLabel}；厂商软文、会议广告和重复转发进不来。`,
     publish: `${EDITION_WHEN.daily} 出日报，${EDITION_WHEN.weekly} 出周报，${EDITION_WHEN.monthly} 出月报。`,
   },
   /**
@@ -184,7 +189,7 @@ export const ADMIN = {
 /** Agent 接入页的示例。 */
 export const AGENT = {
   /** MCP 工具表里“搜索”一行：能搜什么、可以怎么问。 */
-  search: { scope: "按医院、厂商、产品、政策或话题搜最近 7 天", ask: "这家厂商的 AI 产品最近有什么进展？" },
+  search: { scope: "按机构、厂商、政策、系统或话题搜最近 7 天", ask: "电子病历评级最近有什么新要求？" },
 };
 
 /** 日报、周报、月报版面上的说法。 */
@@ -243,7 +248,7 @@ export const CARDS: Record<string, { kicker: string; title: string; subtitle: st
   all: { kicker: subjectAfter("全部", "动态"), title: "所有信源的最新动态，一站看完", subtitle: "按时间汇总各信源的最新动态，可按类别与标签筛选。" },
   hot: { kicker: "热点榜", title: "过去 48 小时，大家在讨论什么", subtitle: "热度指数、趋势与组成热度的公开来源。", accent: "hot" },
   daily: { kicker: withSubject("日报"), title: subjectAfter(`每天 ${spokenTime(EDITION_TIMES.daily)}，一份读得完的`, "日报"), subtitle: `${subjectAfter("前一天值得关注的", "动态")}。` },
-  weekly: { kicker: withSubject("周报"), title: `一周${REPORTS.entry.noun}，一次看清`, subtitle: "本周的主线、重要发布与值得回看的讨论。" },
+  weekly: { kicker: withSubject("周报"), title: `一周${REPORTS.entry.noun}，一次看清`, subtitle: "本周的政策主线、重要项目与产品、值得回看的解读。" },
   monthly: { kicker: withSubject("月报"), title: "一个月的变化", subtitle: "月度主线与关键事件回顾。" },
   about: { kicker: "关于", title: `关于 ${SITE.name}`, subtitle: SITE.description },
   terms: { kicker: "使用规则", title: `${SITE.name} 使用规则`, subtitle: "网页、API、RSS 与 MCP 的使用范围。" },

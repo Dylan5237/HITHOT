@@ -1,61 +1,228 @@
 {
-  "$comment": "医信AI热点的示范信源：首次启动时导入（scripts/seed.ts，ON CONFLICT DO NOTHING，已存在的不会被覆盖）。之后在后台“信源”里新建、修改、试抓和暂停。字段说明见 docs/customize.md 与 docs/sources.md。\n\n本站只收医疗信息化里的 AI 进展，这里只保留 2026-10-14 实测能供对题内容的四个源：\n1) HIT专家网 https://www.hit180.com/feed —— 200、application/rss+xml、10 条。**响应很慢，实测约 25 秒**，抓超时不要当成死链。11 条里 8 条医疗、2 条医疗+AI，是唯一稳定对题的国内行业媒体。\n2) CHIMA 中国医院协会信息专业委员会 —— 2026-10-14 新增，已用本仓库 packages/backend/src/sources/web-list.ts 的 fromHtml() 在真实 HTML 上验证：**20/20 条全部解析成功，日期齐全（span.date 是完整 ISO 日期）、标题不截断（a.dy_title 文本即全称）**。关键是列表页要用 /News/Columns/ListAll?IsTop=1&PageSize=20&page=1；栏目页 /Html/News/Columns/<id>/Index0.html 才是 JS 加载、只有导航链接，不要用那个。文章页 h1.article_title + div.article_cont 是服务端渲染的全文，detail.summarySelector 取来做摘要。会议通知类噪声用 ingestNoiseFilter.dropMarkersTitleOnly 挡掉。\n3) HL7 International Blog、HL7 Europe —— 各约 10 条，约四成医疗，标准组织一手。海外源从服务器可直连，不需要代理。\n\n国家医保局三栏（医保数智库 / 政策法规 / 医保动态）已置 enabled=false：页面可直连（200，不是 412），文章链接也确实写在原始 HTML 里，但藏在 <script type=\"text/xml\"><datastore> 的 <record><![CDATA[<li>…</li>]]></record> 中，页面上可见的 <div class=\"dfyb-con\"><ul> 是空的，所以 parseMode \"html\" 的选择器取不到；该 CMS 的 /module/web/jpage/dataproxy.jsp 分页端点用 GET 只回 54 字节空白（要 XHR POST）。这三条必须经 Jina Reader 渲染（.env 配 JINA_API_KEY，按次计费）才能用；拿到 key 后把 enabled 改回 true，并先在后台“预览抓取”核对抓到的是文章而不是导航。RSSHub 没有 nhsa 路由，自建 RSSHub 替代不了它们。\n\n自建 RSSHub 这条路已在服务器上实测失败（2026-10-14，0/4 路由可用），不要再试：国家药监局 /gov/nmpa/ylqx/ylqxggtg 与 /gov/nmpa/xxgk/ggtg 的上游对阿里云机房 IP 同样回 **412**（路由是纯 HTTP，无绕过手段）；中国信通院 /gov/caict/bps 与 /gov/caict/qwsj 需要 patchright 无头 chromium（build 1243），diygod/rsshub 镜像里没带且 node_modules/patchright 被裁剪掉 cli.js，三次补装全失败。所以国内官方一手（卫健委 / 药监局 / 信通院 / 医保局）目前**只能靠 Jina，或者换信源**。\n\n已按实测剔除：雷锋网（21 条中医疗+AI 为 0）、钛媒体（13 条中医疗+AI 为 0）——泛科技媒体只会白烧 prefilter 的付费额度；Hay on FHIR（403 浏览器验证页，抓不到）。\n实测不可用、故不写入：国家卫健委 nhc.gov.cn（412）、器审中心 cmde.org.cn（202 JS 挑战）、中国医院协会 cha.org.cn（403）、亿欧 iyiou.com（202）；动脉网 vcbeat.top/feed 返回的是 Nuxt SSR 首页而非 RSS（0 个 <item>），vbdata.cn/intelList 客户端渲染；健康界 cn-healthcare.com 首页是纯 JS 壳（23KB、0 个链接）、/feed 404，RSSHub 那个 cn-healthcare 路由依赖的 articlelist API 现在回 system error；中国政府网 gov.cn/zhengce/zuixin/ 200 但列表由内联 JS 模板 listArrP[i].URL 注入，原始 HTML 里没有条目；生物谷、卫宁健康 404；极客公园有 RSS 但同属泛科技噪声。rsshub.app 公共实例不可达。\n厂商官网（讯飞医疗、联影智能、东软、卫宁健康、创业慧康、东华医为、数坤、深睿等）新闻列表全部是 JS 渲染或 404。公众号源需要极致了（DAJIALA_KEY）与真实 ghid，未取得前不写入。",
+  "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改和暂停。字段说明见 docs/customize.md；医疗信息化信源的选择与待补清单见 docs/medical-it.md。",
   "sources": [
     {
-      "id": "rss-hit180",
-      "name": "HIT专家网",
-      "kind": "rss",
+      "id": "govcn-nhc",
+      "name": "国家卫健委（中国政府网部门文件）",
+      "kind": "json_list",
       "config": {
-        "feedUrl": "https://www.hit180.com/feed",
+        "url": "https://sousuo.www.gov.cn/search-gov/data?t=zhengcelibrary_bm&q=&bmfl=%E5%9B%BD%E5%AE%B6%E5%8D%AB%E7%94%9F%E5%81%A5%E5%BA%B7%E5%A7%94%E5%91%98%E4%BC%9A&timetype=timeqb&sort=pubtime&sortType=1&p=1&n=20&type=gwyzcwjk",
+        "mode": "json_api",
+        "itemsPath": "searchVO.listVO",
+        "titlePaths": [
+          "title"
+        ],
+        "urlTemplate": "{raw:url}",
+        "summaryPaths": [
+          "summary"
+        ],
+        "publishedAtPath": "pubtime",
+        "publishedAtUnit": "epoch_ms",
+        "externalIdPath": "id",
+        "allowUrlPrefixes": [
+          "https://www.gov.cn/"
+        ],
         "_aihot": {
-          "initialBackfillLimit": 20
-        }
-      },
-      "tier": "T2",
-      "participation_mode": "editorial",
-      "interval_minutes": 60,
-      "tags": [
-        "行业媒体",
-        "国内"
-      ],
-      "site_fulltext": false,
-      "syndicate_fulltext": false
-    },
-    {
-      "id": "rss-hl7-blog",
-      "name": "HL7 International Blog",
-      "kind": "rss",
-      "config": {
-        "feedUrl": "https://blog.hl7.org/rss.xml",
-        "_aihot": {
-          "initialBackfillLimit": 12
+          "initialBackfillLimit": 10
         }
       },
       "tier": "T1",
-      "owner_entity_id": "hl7",
+      "owner_entity_id": "nhc",
       "participation_mode": "editorial",
       "interval_minutes": 180,
       "tags": [
-        "标准组织",
-        "官方"
+        "官方",
+        "政策"
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
     },
     {
-      "id": "rss-hl7-europe",
-      "name": "HL7 Europe",
+      "id": "govcn-nhsa",
+      "name": "国家医保局（中国政府网部门文件）",
+      "kind": "json_list",
+      "config": {
+        "url": "https://sousuo.www.gov.cn/search-gov/data?t=zhengcelibrary_bm&q=&bmfl=%E5%9B%BD%E5%AE%B6%E5%8C%BB%E7%96%97%E4%BF%9D%E9%9A%9C%E5%B1%80&timetype=timeqb&sort=pubtime&sortType=1&p=1&n=20&type=gwyzcwjk",
+        "mode": "json_api",
+        "itemsPath": "searchVO.listVO",
+        "titlePaths": [
+          "title"
+        ],
+        "urlTemplate": "{raw:url}",
+        "summaryPaths": [
+          "summary"
+        ],
+        "publishedAtPath": "pubtime",
+        "publishedAtUnit": "epoch_ms",
+        "externalIdPath": "id",
+        "allowUrlPrefixes": [
+          "https://www.gov.cn/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 10
+        }
+      },
+      "tier": "T1",
+      "owner_entity_id": "nhsa",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "govcn-nmpa",
+      "name": "国家药监局（中国政府网部门文件）",
+      "kind": "json_list",
+      "config": {
+        "url": "https://sousuo.www.gov.cn/search-gov/data?t=zhengcelibrary_bm&q=&bmfl=%E5%9B%BD%E5%AE%B6%E8%8D%AF%E5%93%81%E7%9B%91%E7%9D%A3%E7%AE%A1%E7%90%86%E5%B1%80&timetype=timeqb&sort=pubtime&sortType=1&p=1&n=20&type=gwyzcwjk",
+        "mode": "json_api",
+        "itemsPath": "searchVO.listVO",
+        "titlePaths": [
+          "title"
+        ],
+        "urlTemplate": "{raw:url}",
+        "summaryPaths": [
+          "summary"
+        ],
+        "publishedAtPath": "pubtime",
+        "publishedAtUnit": "epoch_ms",
+        "externalIdPath": "id",
+        "allowUrlPrefixes": [
+          "https://www.gov.cn/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 10
+        }
+      },
+      "tier": "T1",
+      "owner_entity_id": "nmpa",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "govcn-natcm",
+      "name": "国家中医药局（中国政府网部门文件）",
+      "kind": "json_list",
+      "config": {
+        "url": "https://sousuo.www.gov.cn/search-gov/data?t=zhengcelibrary_bm&q=&bmfl=%E5%9B%BD%E5%AE%B6%E4%B8%AD%E5%8C%BB%E8%8D%AF%E7%AE%A1%E7%90%86%E5%B1%80&timetype=timeqb&sort=pubtime&sortType=1&p=1&n=20&type=gwyzcwjk",
+        "mode": "json_api",
+        "itemsPath": "searchVO.listVO",
+        "titlePaths": [
+          "title"
+        ],
+        "urlTemplate": "{raw:url}",
+        "summaryPaths": [
+          "summary"
+        ],
+        "publishedAtPath": "pubtime",
+        "publishedAtUnit": "epoch_ms",
+        "externalIdPath": "id",
+        "allowUrlPrefixes": [
+          "https://www.gov.cn/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 10
+        }
+      },
+      "tier": "T1",
+      "owner_entity_id": "natcm",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "govcn-ndcpa",
+      "name": "国家疾控局（中国政府网部门文件）",
+      "kind": "json_list",
+      "config": {
+        "url": "https://sousuo.www.gov.cn/search-gov/data?t=zhengcelibrary_bm&q=&bmfl=%E5%9B%BD%E5%AE%B6%E7%96%BE%E7%97%85%E9%A2%84%E9%98%B2%E6%8E%A7%E5%88%B6%E5%B1%80&timetype=timeqb&sort=pubtime&sortType=1&p=1&n=20&type=gwyzcwjk",
+        "mode": "json_api",
+        "itemsPath": "searchVO.listVO",
+        "titlePaths": [
+          "title"
+        ],
+        "urlTemplate": "{raw:url}",
+        "summaryPaths": [
+          "summary"
+        ],
+        "publishedAtPath": "pubtime",
+        "publishedAtUnit": "epoch_ms",
+        "externalIdPath": "id",
+        "allowUrlPrefixes": [
+          "https://www.gov.cn/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 10
+        }
+      },
+      "tier": "T1",
+      "owner_entity_id": "ndcpa",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-nda-notices",
+      "name": "国家数据局 通知公告",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.nda.gov.cn/sjj/zwgk/tzgg/list/index_pc_1.html",
+        "parseMode": "html",
+        "itemSelector": "ul.u-list > li",
+        "linkSelector": "a",
+        "titleSelector": "a",
+        "publishedAtSelector": "span",
+        "allowUrlPrefixes": [
+          "https://www.nda.gov.cn/sjj/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1",
+      "owner_entity_id": "nda",
+      "participation_mode": "editorial",
+      "interval_minutes": 240,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-hl7-standard",
+      "name": "HL7 International：The Standard",
       "kind": "rss",
       "config": {
-        "feedUrl": "https://www.hl7europe.org/feed/",
+        "feedUrl": "https://blog.hl7.org/rss.xml",
         "_aihot": {
           "initialBackfillLimit": 8
         }
       },
       "tier": "T1_5",
-      "owner_entity_id": "hl7",
       "participation_mode": "editorial",
-      "interval_minutes": 240,
+      "interval_minutes": 360,
       "tags": [
         "标准组织"
       ],
@@ -63,144 +230,314 @@
       "syndicate_fulltext": false
     },
     {
-      "id": "web-chima",
-      "name": "CHIMA · 中国医院协会信息专业委员会",
-      "kind": "web_list",
+      "id": "rss-google-health",
+      "name": "Google Health 博客",
+      "kind": "rss",
       "config": {
-        "url": "https://www.chima.org.cn/News/Columns/ListAll?IsTop=1&PageSize=20&page=1",
-        "parseMode": "html",
-        "itemSelector": "ul.column_list li.box_li",
-        "linkSelector": "a.dy_title",
-        "titleSelector": "a.dy_title",
-        "publishedAtSelector": "span.date",
-        "publishedAtUtcOffset": "+08:00",
-        "allowUrlPrefixes": [
-          "https://www.chima.org.cn/Html/News/Articles/"
-        ],
-        "ingestNoiseFilter": {
-          "dropMarkersTitleOnly": [
-            "关于举办",
-            "报名",
-            "征稿",
-            "征文",
-            "招聘",
-            "讣告"
-          ]
-        },
-        "detail": {
-          "summarySelector": "div.article_cont",
-          "maxFetches": 12
-        },
+        "feedUrl": "https://blog.google/innovation-and-ai/technology/health/rss/",
         "_aihot": {
-          "initialBackfillLimit": 20
+          "initialBackfillLimit": 8
         }
       },
-      "tier": "T1_5",
+      "tier": "T1",
+      "owner_entity_id": "google",
       "participation_mode": "editorial",
-      "interval_minutes": 120,
+      "interval_minutes": 240,
       "tags": [
-        "行业组织",
-        "国内",
-        "医院信息化"
+        "官方",
+        "厂商"
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
     },
     {
-      "id": "web-nhsa-digital",
-      "name": "国家医保局 · 医保数智库",
-      "kind": "web_list",
+      "id": "rss-fda-press",
+      "name": "FDA Press Releases",
+      "kind": "rss",
       "config": {
-        "url": "https://r.jina.ai/https://www.nhsa.gov.cn/col/col257/index.html",
-        "parseMode": "html",
-        "itemSelector": ".dfyb-con ul li",
-        "linkSelector": "a",
-        "titleSelector": "a",
-        "publishedAtSelector": "span",
-        "publishedAtUtcOffset": "+08:00",
-        "allowUrlPrefixes": [
-          "https://www.nhsa.gov.cn/art/"
-        ],
+        "feedUrl": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml",
         "_aihot": {
-          "initialBackfillLimit": 15
+          "initialBackfillLimit": 8
         }
       },
       "tier": "T1",
-      "owner_entity_id": "nhsa",
       "participation_mode": "editorial",
-      "interval_minutes": 120,
+      "interval_minutes": 240,
       "tags": [
         "官方",
-        "国内",
-        "需Jina"
+        "监管",
+        "海外"
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false,
       "enabled": false
     },
     {
-      "id": "web-nhsa-policy",
-      "name": "国家医保局 · 政策法规",
-      "kind": "web_list",
+      "id": "rss-jmir-medinform",
+      "name": "JMIR Medical Informatics",
+      "kind": "rss",
       "config": {
-        "url": "https://r.jina.ai/https://www.nhsa.gov.cn/col/col104/index.html",
-        "parseMode": "html",
-        "itemSelector": ".dfyb-con ul li",
-        "linkSelector": "a",
-        "titleSelector": "a",
-        "publishedAtSelector": "span",
-        "publishedAtUtcOffset": "+08:00",
-        "allowUrlPrefixes": [
-          "https://www.nhsa.gov.cn/art/"
-        ],
+        "feedUrl": "https://medinform.jmir.org/feed/atom",
         "_aihot": {
-          "initialBackfillLimit": 15
+          "initialBackfillLimit": 8
         }
       },
       "tier": "T1",
-      "owner_entity_id": "nhsa",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "期刊",
+        "研究"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-histalk",
+      "name": "HIStalk",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://histalk2.com/feed/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
       "participation_mode": "editorial",
       "interval_minutes": 120,
       "tags": [
-        "官方",
-        "国内",
-        "需Jina"
+        "媒体",
+        "海外"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-healthcare-dive",
+      "name": "Healthcare Dive",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.healthcaredive.com/feeds/news/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "tags": [
+        "媒体",
+        "海外"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-stat-health-tech",
+      "name": "STAT Health Tech",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.statnews.com/category/health-tech/feed/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "tags": [
+        "媒体",
+        "海外"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-healthcare-it-today",
+      "name": "Healthcare IT Today",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.healthcareittoday.com/feed/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "媒体",
+        "海外"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-medcity-health-tech",
+      "name": "MedCity News Health Tech",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://medcitynews.com/category/health-tech/feed/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "媒体",
+        "海外"
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false,
       "enabled": false
     },
     {
-      "id": "web-nhsa-news",
-      "name": "国家医保局 · 医保动态",
-      "kind": "web_list",
+      "id": "rss-hit-consultant",
+      "name": "HIT Consultant",
+      "kind": "rss",
       "config": {
-        "url": "https://r.jina.ai/https://www.nhsa.gov.cn/col/col14/index.html",
-        "parseMode": "html",
-        "itemSelector": ".dfyb-con ul li",
-        "linkSelector": "a",
-        "titleSelector": "a",
-        "publishedAtSelector": "span",
-        "publishedAtUtcOffset": "+08:00",
-        "allowUrlPrefixes": [
-          "https://www.nhsa.gov.cn/art/"
-        ],
+        "feedUrl": "https://hitconsultant.net/feed/",
         "_aihot": {
-          "initialBackfillLimit": 15
+          "initialBackfillLimit": 8
         }
       },
-      "tier": "T1",
-      "owner_entity_id": "nhsa",
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "媒体",
+        "海外"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-leiphone",
+      "name": "雷峰网（科技综合，靠预筛留下医疗内容）",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.leiphone.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
       "participation_mode": "editorial",
       "interval_minutes": 120,
       "tags": [
-        "官方",
-        "国内",
-        "需Jina"
+        "媒体",
+        "综合"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-chima-policy",
+      "name": "CHIMA 政策法规",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.chima.org.cn/Html/News/Columns/4/Index0.html",
+        "parseMode": "html",
+        "itemSelector": "ul.column_list > li.box_li",
+        "linkSelector": "a.dy_title",
+        "titleSelector": "a.dy_title",
+        "publishedAtSelector": "span.date",
+        "allowUrlPrefixes": [
+          "https://www.chima.org.cn/Html/News/Articles/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 240,
+      "tags": [
+        "行业协会",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-chima-cases",
+      "name": "CHIMA 案例分享",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.chima.org.cn/Html/News/Columns/34/Index0.html",
+        "parseMode": "html",
+        "itemSelector": "ul.column_list > li.box_li",
+        "linkSelector": "a.dy_title",
+        "titleSelector": "a.dy_title",
+        "publishedAtSelector": "span.date",
+        "allowUrlPrefixes": [
+          "https://www.chima.org.cn/Html/News/Articles/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业协会",
+        "建设实践"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-vcbeat",
+      "name": "动脉网",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.vcbeat.top/",
+        "parseMode": "html",
+        "itemSelector": ".main-list-item",
+        "linkSelector": "a[href^='https://www.vbdata.cn/15']",
+        "titleSelector": "h1.title-content",
+        "publishedAtSelector": ".spa2",
+        "allowUrlPrefixes": [
+          "https://www.vbdata.cn/15"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "detail": {
+          "publishedAtSelector": "span.spa2"
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "tags": [
+        "行业媒体"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-hit180",
+      "name": "HIT专家网",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.hit180.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "tags": [
+        "行业媒体"
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false,
-      "enabled": false
+      "enabled": true
     }
   ]
 }

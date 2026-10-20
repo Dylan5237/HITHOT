@@ -1,13 +1,16 @@
 // Material storage: every distinct change gets its own revision and history row, also under
 // concurrency; imported history gets a baseline instead of a revision; simultaneous first reports
-// of one URL create one article; other sources' listings, returns to an earlier version and characters
-// lost in transit are no revision (articles used to flip between two versions on every fetch, and a
-// feed garbled a few characters differently on every load).
+// of one URL create one article; other sources' listings, returns to an earlier version, characters
+// lost in transit and characters written as references are no revision (articles used to flip between
+// two versions on every fetch, a feed garbled a few characters differently on every load, and decoding
+// references would have sent every listed post stored with them back to analysis).
 import { tag } from "./setup.ts";
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { upsertMaterial } from "@aihot/backend/content/materials";
+import { readPublicationDate } from "@aihot/backend/sources/dates";
+import { loadAnalyzeInput, buildMaterial } from "@aihot/backend/editorial/input";
 import { identityKeyForUrl } from "@aihot/backend/lib/url";
 
 const SOURCE = `test-materials-${tag()}`;
@@ -117,7 +120,7 @@ test("another source listing the same article records a discovery, not a revisio
 
 test("an article linking to a tweet is stored separately from the tweet", async () => {
   const tweetId = `${Date.now()}123456`;
-  const url = `https://x.com/winninghealth/status/${tweetId}`;
+  const url = `https://x.com/openai/status/${tweetId}`;
   const tweet = await upsertMaterial({ sourceId: SOURCE, url, title: "Original tweet", via: "fetch" });
   const article = await upsertMaterial({
     sourceId: OTHER, url: `https://example.com/report-${tag()}?related=${url}`, title: "Independent report", via: "fetch",
@@ -127,7 +130,7 @@ test("an article linking to a tweet is stored separately from the tweet", async 
   assert.equal((await state(tweet.articleId)).title, "Original tweet");
   assert.equal((await state(article.articleId)).title, "Independent report");
   const alias = await upsertMaterial({
-    sourceId: OTHER, url: `https://twitter.com/winninghealth/status/${tweetId}`, title: "Tweet alias", via: "fetch",
+    sourceId: OTHER, url: `https://twitter.com/openai/status/${tweetId}`, title: "Tweet alias", via: "fetch",
   });
   assert.equal(alias.created, false);
   assert.equal(alias.articleId, tweet.articleId);
@@ -145,10 +148,10 @@ test("another source reporting an imported article first does not set its baseli
 });
 
 test("a return to an earlier version is not a revision", async () => {
-  // One listing with two cards for one post ("Company Epic and Cerner…" / "Epic and Cerner…").
+  // One listing with two cards for one post ("Company Mistral and Mozilla…" / "Mistral and Mozilla…").
   const url = `https://example.com/two-cards-${tag()}`;
-  const a = { sourceId: SOURCE, url, title: "Company Epic and Cerner", excerpt: "card", via: "fetch" as const };
-  const b = { ...a, title: "Epic and Cerner" };
+  const a = { sourceId: SOURCE, url, title: "Company Mistral and Mozilla", excerpt: "card", via: "fetch" as const };
+  const b = { ...a, title: "Mistral and Mozilla" };
   const first = await upsertMaterial(a);
   assert.equal((await upsertMaterial(b)).revised, true, "a version not seen before is a revision");
   await sql`UPDATE articles SET processing_state = 'analyzed' WHERE id = ${first.articleId}`;
@@ -157,8 +160,8 @@ test("a return to an earlier version is not a revision", async () => {
     assert.equal((await upsertMaterial(b)).revised, false, "and to the current one again");
   }
   const s = await state(first.articleId);
-  assert.deepEqual([s.revision, s.title, s.processing_state], [2, "Epic and Cerner", "analyzed"], "nothing to analyse or publish again");
-  assert.equal((await upsertMaterial({ ...a, title: "Epic and Cerner, updated" })).revised, true, "a new version still is");
+  assert.deepEqual([s.revision, s.title, s.processing_state], [2, "Mistral and Mozilla", "analyzed"], "nothing to analyse or publish again");
+  assert.equal((await upsertMaterial({ ...a, title: "Mistral and Mozilla, updated" })).revised, true, "a new version still is");
   assert.equal((await state(first.articleId)).revision, 3);
 });
 
@@ -191,4 +194,44 @@ test("characters lost in transit are no revision, lost or restored", async () =>
   assert.equal((await upsertMaterial(edited(garbled[1]!))).revised, true, "a real change is one, lost characters or not");
   for (const report of [edited(clean), edited(garbled[2]!)]) assert.equal((await upsertMaterial(report)).revised, false);
   assert.equal((await state(first.articleId)).revision, 2);
+});
+
+test("a character written as a reference is the same text, stored either way", async () => {
+  // Titles and summaries stored before feeds' references were decoded keep them; the same listing
+  // read again arrives decoded and is no new material (no second analysis of every listed post).
+  const url = `https://example.com/references-${tag()}`;
+  const stored = { sourceId: SOURCE, url, title: "Friends don&#8217;t let friends &mdash; ever", excerpt: "what you&#x2019;ll get &amp; more&hellip;", via: "fetch" as const };
+  const first = await upsertMaterial(stored);
+  const decoded = { ...stored, title: "Friends don’t let friends — ever", excerpt: "what you’ll get & more…" };
+  assert.equal((await upsertMaterial(decoded)).revised, false);
+  assert.equal((await upsertMaterial(stored)).revised, false);
+  assert.equal((await state(first.articleId)).revision, 1);
+  assert.equal((await upsertMaterial({ ...decoded, title: "Friends don’t let friends, updated" })).revised, true, "a real change still is one");
+});
+
+test('stored publication date remains a date in the model input, even at a source timezone boundary', async () => {
+  const source = 'precision-fixture';
+  await sql`INSERT INTO sources (id,name,kind,config,tier) VALUES (${source},'Precision','external','{}','T1')`;
+  const input = { sourceId: source, url: 'https://example.org/date', title: 'Original day', bodyText: 'Original text', bodyStatus: 'ok' as const, via: 'fetch' as const,
+    ...readPublicationDate('2026-10-13', '-07:00'), discoveredAt: new Date('2026-10-13T09:00:00Z') };
+  const { articleId } = await upsertMaterial(input);
+  const article = await loadAnalyzeInput(articleId);
+  assert.equal(article?.publicationTime, '2026-10-13');
+  assert.match(buildMaterial(article!), /2026-10-13（原文仅有日期，时刻未知）/);
+  assert.doesNotMatch(buildMaterial(article!), /15:00/);
+  await upsertMaterial(input);
+  const [row] = await sql`SELECT publication_time, revision FROM articles WHERE id=${articleId}`;
+  assert.equal(row?.publication_time, '2026-10-13');
+  assert.equal(row?.revision, 1);
+});
+
+test("rereading an exact midnight upgrades day precision without a new revision", async () => {
+  const input = { sourceId: SOURCE, url: `https://example.com/precision-${tag()}`, title: "Release", via: "fetch" as const,
+    ...readPublicationDate("2026-10-13", "-07:00"), discoveredAt: new Date("2026-10-13T09:00:00Z") };
+  const { articleId } = await upsertMaterial(input);
+  await upsertMaterial({ ...input, ...readPublicationDate("2026-10-13T00:00:00-07:00") });
+  await upsertMaterial(input);
+  const [row] = await sql`SELECT publication_time, revision FROM articles WHERE id=${articleId}`;
+  assert.equal(row!.publication_time, "2026-10-13T07:00:00.000Z");
+  assert.equal(row!.revision, 1);
 });

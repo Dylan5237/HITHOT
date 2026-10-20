@@ -6,38 +6,25 @@ import { tag } from "./setup.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
-import { TOPICS, loadTopicPage, topicMembership } from "@aihot/backend/publication/topics";
+import { findTopic, loadTopicPage, topicMembership } from "@aihot/backend/publication/topics";
 
 after(closeDb);
 
 test("topic lists and pool counts share the exact membership predicate", async () => {
-  const companyTopic = (entityId: string) => {
-    const topic = TOPICS.find((t) => t.entityId === entityId);
-    assert.ok(topic, `the directory has a company topic for ${entityId}`);
-    return topic;
-  };
-  const tagTopic = (wanted: string) => {
-    const topic = TOPICS.find((t) => t.entityId === null && t.tags.includes(wanted));
-    assert.ok(topic, `the directory has a topic for the tag ${wanted}`);
-    return topic;
-  };
-  const winning = companyTopic("winning");
-  const epic = companyTopic("epic");
-  const agent = tagTopic("Agent");
   const prefix = `membership-${tag()}`;
   const at = new Date("2026-01-01T00:00:00Z");
   const now = new Date(+at + 1000);
   const cases = [
-    { title: "", original: null, tags: ["Agent"], topics: [agent.slug] },
-    { title: "Winning Health Agent", original: null, tags: [], topics: [] },
-    { title: "", original: null, tags: ["entity:winning"], topics: [winning.slug] },
-    { title: "Unrelated", original: null, tags: ["entity:winning", "entity:neusoft"], topics: [] },
-    { title: "Unrelated", original: "WINNING HEALTH launches a product", tags: ["entity:winning", "entity:neusoft"], topics: [winning.slug] },
-    { title: "Epicor", original: null, tags: ["entity:epic", "entity:neusoft"], topics: [] },
-    { title: "发布Epic的新产品", original: null, tags: ["entity:epic", "entity:neusoft"], topics: [epic.slug] },
-    { title: "Unselected", original: null, tags: ["Agent", "entity:winning"], topics: [agent.slug, winning.slug], selected: false },
-    { title: "Withdrawn", original: null, tags: ["Agent", "entity:winning"], topics: [agent.slug, winning.slug], visibility: "withdrawn" },
-    { title: "Future", original: null, tags: ["Agent", "entity:winning"], topics: [agent.slug, winning.slug], future: true },
+    { title: "", original: null, tags: ["医疗大模型"], topics: ["med-llm"] },
+    { title: "Microsoft Agent", original: null, tags: [], topics: [] },
+    { title: "", original: null, tags: ["entity:microsoft"], topics: ["microsoft"] },
+    { title: "Unrelated", original: null, tags: ["entity:microsoft", "entity:oracle-health"], topics: [] },
+    { title: "Unrelated", original: "MICROSOFT launches a model", tags: ["entity:microsoft", "entity:oracle-health"], topics: ["microsoft"] },
+    { title: "Epicenter", original: null, tags: ["entity:epic", "entity:oracle-health"], topics: [] },
+    { title: "发布Epic的新模型", original: null, tags: ["entity:epic", "entity:oracle-health"], topics: ["epic"] },
+    { title: "Unselected", original: null, tags: ["医疗大模型", "entity:microsoft"], topics: ["med-llm", "microsoft"], selected: false },
+    { title: "Withdrawn", original: null, tags: ["医疗大模型", "entity:microsoft"], topics: ["med-llm", "microsoft"], visibility: "withdrawn" },
+    { title: "Future", original: null, tags: ["医疗大模型", "entity:microsoft"], topics: ["med-llm", "microsoft"], future: true },
   ];
   await sql`INSERT INTO sources (id, name, kind, tier) VALUES (${prefix}, ${prefix}, 'rss', 'T1')`;
   for (const [i, row] of cases.entries()) {
@@ -49,7 +36,7 @@ test("topic lists and pool counts share the exact membership predicate", async (
       VALUES (${id}, ${prefix}, ${row.title}, ${row.original}, ${`https://example.org/${id}`}, ${at}, ${at},
         ${at}, ${row.future ? new Date(+now + 1) : at}, ${row.selected ?? true}, true, ${row.visibility ?? "public"}, 'news', ${row.tags})`;
   }
-  const topics = [winning, epic, agent];
+  const topics = ["microsoft", "epic", "med-llm"].map(slug => findTopic(slug)!);
   const membership = new Map((await sql<{ id: string; topics: string[] }[]>`
     SELECT p.article_id AS id, ${topicMembership(topics)} AS topics FROM publications p WHERE p.source_id = ${prefix}`)
     .map(row => [row.id, row.topics]));

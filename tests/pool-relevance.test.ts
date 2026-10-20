@@ -5,7 +5,7 @@ import { tag } from "./setup.ts";
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
-import { loadPool } from "@aihot/backend/publication/pool";
+import { loadPool, publicMatchCondition, searchTerms } from "@aihot/backend/publication/pool";
 
 const T = `relevance-${tag()}`;
 const now = new Date("2026-01-01T12:00:00Z");
@@ -17,7 +17,7 @@ before(async () => {
 });
 
 async function add(suffix: string, direct: string, body: string, options: {
-  title?: string; age?: number; channel?: "news" | "x"; category?: "product" | "research"; tags?: string[];
+  title?: string; age?: number; channel?: "news" | "x"; category?: "policy" | "research"; tags?: string[];
   visibility?: string; eligible?: boolean; future?: boolean; noSearchRow?: boolean;
 } = {}) {
   const at = new Date(+now - (options.age ?? 60) * 1000);
@@ -25,7 +25,7 @@ async function add(suffix: string, direct: string, body: string, options: {
     VALUES (${id(suffix)}, ${T}, ${id(suffix)}, ${`https://example.org/${id(suffix)}`}, ${options.title ?? "neutral"}, ${at}, ${at})`;
   await sql`INSERT INTO publications (article_id, title, source_id, channel, category, tags, url, discovered_at, timeline_at, sort_at,
     selected, eligible, visibility, visible_after, search_text)
-    VALUES (${id(suffix)}, ${options.title ?? "neutral"}, ${T}, ${options.channel ?? "news"}, ${options.category ?? "product"}, ${options.tags ?? []},
+    VALUES (${id(suffix)}, ${options.title ?? "neutral"}, ${T}, ${options.channel ?? "news"}, ${options.category ?? "policy"}, ${options.tags ?? []},
       ${`https://example.org/${id(suffix)}`}, ${at}, ${at}, ${at}, ${options.future ?? false}, ${options.eligible ?? true},
       ${options.visibility ?? "public"}, ${options.future ? new Date(+now + 60_000) : at}, ${direct})`;
   if (!options.noSearchRow) await sql`INSERT INTO pool_search (article_id, direct, body) VALUES (${id(suffix)}, ${direct}, ${body})`;
@@ -50,15 +50,15 @@ test("short and multi-term relevance keep cross-field AND and deterministic scor
 });
 
 test("company relevance retains tag-only candidates, boosts and unique totals", async () => {
-  await add("company-both", "winning", "winning", { title: "Winning Health", tags: ["entity:winning"], age: 100 });
-  await add("company-tag", "", "", { tags: ["entity:winning"], noSearchRow: true, age: 1 });
-  await add("company-text", "winning qy", "winning", { title: "Winning Health", age: 60 });
-  await add("company-low", "winning", "", { age: 1 });
-  await add("company-withdrawn", "winning", "winning", { tags: ["entity:winning"], visibility: "withdrawn" });
-  const company = await loadPool(query("winning"));
+  await add("company-both", "epic", "epic", { title: "Epic", tags: ["entity:epic"], age: 100 });
+  await add("company-tag", "", "", { tags: ["entity:epic"], noSearchRow: true, age: 1 });
+  await add("company-text", "epic qy", "epic", { title: "Epic", age: 60 });
+  await add("company-low", "epic", "", { age: 1 });
+  await add("company-withdrawn", "epic", "epic", { tags: ["entity:epic"], visibility: "withdrawn" });
+  const company = await loadPool(query("Epic"));
   assert.deepEqual(company.items.map(item => item.id), ["company-both", "company-tag", "company-text", "company-low"].map(id));
   assert.equal(company.total, 4, "the text-and-tag candidate counts once");
-  const multi = await loadPool(query("winning qy"));
+  const multi = await loadPool(query("epic qy"));
   assert.deepEqual(multi.items.map(item => item.id), [id("company-text")], "only the whole company alias expands the candidates");
 });
 
@@ -72,4 +72,35 @@ test("relevance retains combined filters and literal LIKE characters", async () 
   await add("literal", "qx%_\\z", "");
   await add("wildcard-lookalike", "qx-anything-z", "");
   assert.deepEqual((await loadPool(query("qx%_\\z"))).items.map(item => item.id), [id("literal")]);
+});
+
+test("search terms split where Han meets a Latin word, not before digits", () => {
+  assert.deepEqual(searchTerms("医学影像RAG"), ["医学影像", "rag"]);
+  assert.deepEqual(searchTerms("claude code更新 gpt-5 deepseek v4"), ["claude", "code", "更新", "gpt-5", "deepseek", "v4"]);
+  assert.deepEqual(searchTerms("v4版本"), ["v4", "版本"]);
+  assert.deepEqual(searchTerms("10月"), ["10月"]);
+});
+
+test("public search needs a plain Latin term to start a word in the body", async () => {
+  await add("kv-word", "", "a kv pipeline");
+  await add("kv-han", "", "医学影像kv系统");
+  await add("kv-inside", "", "an mkv file");
+  await add("kv-direct", "mkv", "");
+  const found = async (q: string) => (await sql<{ article_id: string }[]>`
+    SELECT p.article_id FROM publications p WHERE p.source_id = ${T} ${publicMatchCondition(searchTerms(q))}`)
+    .map(r => r.article_id).sort();
+  assert.deepEqual(await found("kv"), ["kv-direct", "kv-han", "kv-word"].map(id).sort());
+});
+
+test("equal relevance ranks a seated selected item, then the higher score, then the newest", async () => {
+  await add("tie-new", "wq", "", { age: 1 });
+  await add("tie-score", "wq", "", { age: 30 });
+  await add("tie-selected", "wq", "", { age: 50 });
+  await add("tie-unseated", "wq", "", { age: 40 });
+  await sql`UPDATE publications SET score = 80 WHERE article_id = ${id("tie-score")}`;
+  await sql`UPDATE publications SET selected = true, score = 10 WHERE article_id = ${id("tie-selected")}`;
+  await sql`UPDATE publications SET selected = true, seat = false, score = 5 WHERE article_id = ${id("tie-unseated")}`;
+  const result = await loadPool(query("wq"));
+  assert.deepEqual(result.items.map(item => item.id), ["tie-selected", "tie-score", "tie-unseated", "tie-new"].map(id));
+  assert.equal(result.total, 4);
 });

@@ -10,18 +10,10 @@ import { closeDb, sql } from "@aihot/backend/db";
 import { upsertMaterial } from "@aihot/backend/content/materials";
 import { stopBoss } from "@aihot/backend/jobs/queue";
 import { publishArticle } from "@aihot/backend/publication/publish";
-import { TOPICS, listTopicSummaries, loadTopicPage } from "@aihot/backend/publication/topics";
+import { listTopicSummaries, loadTopicPage } from "@aihot/backend/publication/topics";
 import { overrideFields } from "@aihot/backend/admin/content";
 
 const T = tag();
-const companyTopic = (entityId: string) => {
-  const topic = TOPICS.find((t) => t.entityId === entityId);
-  if (!topic) throw new Error(`the directory has no company topic for ${entityId}`);
-  return topic;
-};
-const WINNING = companyTopic("winning");
-const NEUSOFT = companyTopic("neusoft");
-const TENCENT = companyTopic("tencent-health");
 const SOURCE = `test-topics-withdrawal-${T}`;
 let older: string;
 let newer: string;
@@ -31,56 +23,56 @@ before(async () => {
   await sql`INSERT INTO sources (id, name, kind, tier, participation_mode, next_fetch_at) VALUES (${SOURCE}, 'Media', 'rss', 'T2', 'editorial', '2100-01-01')`;
   older = await report(1, 3);
   newer = await report(2, 1);
-  corrected = await report(3, 2, "neusoft");
+  corrected = await report(3, 2, "alibaba-health");
   // All scenarios share this one cold index, then exercise the cache without waiting a minute.
-  await loadTopicPage(WINNING.slug, 1);
+  await loadTopicPage("dhcc", 1);
 });
 after(async () => {
   await stopBoss();
   await closeDb();
 });
 
-async function report(n: number, hoursAgo: number, subject = "winning"): Promise<string> {
+async function report(n: number, hoursAgo: number, subject = "dhcc"): Promise<string> {
   const at = new Date(Date.now() - hoursAgo * 3600_000);
   const { articleId } = await upsertMaterial({
-    sourceId: SOURCE, url: `https://example.com/withdrawal-${T}-${n}`, title: `卫宁健康 report ${n}`, bodyText: "body", bodyHtml: "<p>body</p>", bodyStatus: "ok", via: "fetch", publishedAt: at,
+    sourceId: SOURCE, url: `https://example.com/withdrawal-${T}-${n}`, title: `东华医为 report ${n}`, bodyText: "body", bodyHtml: "<p>body</p>", bodyStatus: "ok", via: "fetch", publishedAt: at,
   });
   await sql`UPDATE articles SET discovered_at = ${at}, timeline_at = ${at}, grouped_at = now() WHERE id = ${articleId}`;
   await sql`INSERT INTO analyses (article_id, input_revision, origin, relevance, category, title_zh, summary_zh, score, selected, subjects, tags)
-            VALUES (${articleId}, 1, 'rule', 'pass', 'product', ${`${subject} 消息 ${n}`}, '摘要', 80, true, ${[subject]}, ${['产品发布']})`;
+            VALUES (${articleId}, 1, 'rule', 'pass', 'policy', ${`${subject} 消息 ${n}`}, '摘要', 80, true, ${[subject]}, ${['政策发布']})`;
   await publishArticle(articleId, { releasedAt: new Date(at.getTime() + 60_000) });
   return articleId;
 }
 
 test("a withdrawn report leaves the topic page and the index while the topic index is still cached", async () => {
   // Both are read into the cached index.
-  const before = await loadTopicPage(WINNING.slug, 1);
+  const before = await loadTopicPage("dhcc", 1);
   assert.ok(before?.items.some((i) => i.id === newer));
-  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === WINNING.slug)?.latest?.title, `winning 消息 2`);
+  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === "dhcc")?.latest?.title, `dhcc 消息 2`);
 
   await sql`UPDATE publications SET visibility = 'withdrawn' WHERE article_id = ${newer}`;
-  const page = await loadTopicPage(WINNING.slug, 1);
-  assert.equal(page?.topic.latest?.title, `winning 消息 1`, "the page's last update");
-  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === WINNING.slug)?.latest?.title, `winning 消息 1`, "the index page's headline");
+  const page = await loadTopicPage("dhcc", 1);
+  assert.equal(page?.topic.latest?.title, `dhcc 消息 1`, "the page's last update");
+  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === "dhcc")?.latest?.title, `dhcc 消息 1`, "the index page's headline");
   assert.deepEqual(page?.items.map((i) => i.id), [older], "the list (rows were always checked again)");
 });
 
 test("a correction refreshes named content and its topic membership before the index expires", async () => {
-  const title = `Neusoft 更正后的产品消息 ${T}`;
+  const title = `阿里健康 更正后的模型消息 ${T}`;
   await overrideFields(corrected, { fields: { title }, version: 0, reason: "更正标题" }, "test-topics");
-  const retitled = await loadTopicPage(NEUSOFT.slug, 1);
+  const retitled = await loadTopicPage("alibaba-health", 1);
   assert.equal(retitled?.items[0]?.title, title, "the list");
   assert.equal(retitled?.topic.latest?.title, title, "the page headline");
-  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === NEUSOFT.slug)?.latest?.title, title, "the directory headline");
+  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === "alibaba-health")?.latest?.title, title, "the directory headline");
 
-  await overrideFields(corrected, { fields: { category: "viewpoint" }, version: 1, reason: "实际是教程" }, "test-topics");
-  const reclassified = await loadTopicPage(NEUSOFT.slug, 1);
+  await overrideFields(corrected, { fields: { category: "opinion" }, version: 1, reason: "实际是教程" }, "test-topics");
+  const reclassified = await loadTopicPage("alibaba-health", 1);
   assert.equal(reclassified?.items[0]?.id, corrected, "it remains a selected report");
 
-  await overrideFields(corrected, { fields: { tags: ["实践/方法", "entity:tencent-health"] }, version: 2, reason: "更正主体公司" }, "test-topics");
-  const moved = await loadTopicPage(NEUSOFT.slug, 1);
+  await overrideFields(corrected, { fields: { tags: ["建设实践", "entity:tencent-health"] }, version: 2, reason: "更正主体公司" }, "test-topics");
+  const moved = await loadTopicPage("alibaba-health", 1);
   assert.deepEqual(moved?.items, [], "the old topic list drops it");
   assert.equal(moved?.topic.latest, null, "the old topic headline drops it");
-  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === NEUSOFT.slug)?.latest, null, "the directory drops the old membership");
-  assert.equal((await loadTopicPage(TENCENT.slug, 1, new Date()))?.items[0]?.id, corrected, "the corrected membership is retained");
+  assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === "alibaba-health")?.latest, null, "the directory drops the old membership");
+  assert.equal((await loadTopicPage("tencent-health", 1, new Date()))?.items[0]?.id, corrected, "the corrected membership is retained");
 });

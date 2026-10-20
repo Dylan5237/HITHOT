@@ -2,18 +2,18 @@
   "groups": [
     {
       "key": "company",
-      "name": "公司与机构",
-      "blurb": "按厂商与监管主体追踪医疗 AI 动态"
+      "name": "机构与厂商",
+      "blurb": "按监管机构与厂商追踪政策、产品与经营动态"
     },
     {
       "key": "field",
-      "name": "技术方向",
-      "blurb": "按应用与技术领域深挖：医疗大模型、影像 AI、互联互通……"
+      "name": "建设方向",
+      "blurb": "按建设领域深挖：电子病历、互联互通、医保信息化、医疗 AI……"
     },
     {
       "key": "genre",
-      "name": "内容形态",
-      "blurb": "按内容类型浏览：政策、审批、论文、评测、实践……"
+      "name": "内容类型",
+      "blurb": "按体裁浏览：政策、标准评级、中标、研究、观点……"
     }
   ],
   "topics": [
@@ -25,7 +25,7 @@
       "aliases": [
         "卫健委"
       ],
-      "definition": "国家卫生健康委及统计信息中心的医疗 AI 动态：政策文件、行业标准、试点方案与分级评价的持续追踪。"
+      "definition": "国家卫生健康委及其统计信息中心等直属单位发布的医疗信息化政策、标准、评级评审方案与通报。"
     },
     {
       "slug": "nhsa",
@@ -35,7 +35,7 @@
       "aliases": [
         "医保局"
       ],
-      "definition": "国家医疗保障局的智能审核与支付改革动态：医保 AI 基金监管、DRG/DIP 与医疗服务价格立项的持续追踪。"
+      "definition": "国家医疗保障局的医保信息平台、编码标准、DRG/DIP 支付方式改革、医保数据与智能监管动态。"
     },
     {
       "slug": "nmpa",
@@ -45,351 +45,333 @@
       "aliases": [
         "药监局"
       ],
-      "definition": "国家药品监督管理局及器审中心的准入动态：AI 医疗器械注册审批、算法备案与监管通报的持续追踪。"
+      "definition": "国家药品监督管理局的 AI 医疗器械与医疗软件注册审批、审评指导原则、药械追溯与监管动态。"
     },
     {
-      "slug": "caict",
-      "name": "中国信通院",
+      "slug": "nda",
+      "name": "国家数据局",
       "group": "company",
-      "entityId": "caict",
-      "aliases": [
-        "信通院"
-      ],
-      "definition": "中国信息通信研究院的医疗 AI 研究与测评：白皮书、标准、评估结果与可信 AI 实践的追踪。"
-    },
-    {
-      "slug": "hl7",
-      "name": "HL7 / FHIR",
-      "group": "company",
-      "entityId": "hl7",
-      "aliases": [
-        "FHIR"
-      ],
-      "definition": "HL7 International 与 FHIR 标准动态：版本发布、实施指南与医疗互操作生态的持续追踪。"
-    },
-    {
-      "slug": "iflytek-medical",
-      "name": "讯飞医疗",
-      "group": "company",
-      "entityId": "iflytek-medical",
-      "aliases": [
-        "讯飞晓医",
-        "星火医疗大模型"
-      ],
-      "definition": "讯飞医疗的全部动态：星火医疗大模型、讯飞晓医、智医助理与基层医疗 AI 的持续追踪。"
-    },
-    {
-      "slug": "united-imaging-intelligence",
-      "name": "联影智能",
-      "group": "company",
-      "entityId": "united-imaging-intelligence",
-      "aliases": [
-        "uAI"
-      ],
-      "definition": "联影智能（uAI）的全部动态：影像与病理 AI、医疗大模型和产品注册获批的持续追踪。"
-    },
-    {
-      "slug": "yidu",
-      "name": "医渡科技",
-      "group": "company",
-      "entityId": "yidu",
-      "aliases": [
-        "医渡云"
-      ],
-      "definition": "医渡科技的全部动态：医渡云、医疗大数据平台、科研平台与大模型产品的持续追踪。"
+      "entityId": "nda",
+      "definition": "国家数据局的数据要素、公共数据开发利用、数据基础设施政策中与卫生健康相关的部分。"
     },
     {
       "slug": "winning",
       "name": "卫宁健康",
       "group": "company",
       "entityId": "winning",
-      "aliases": [
-        "WiNEX"
-      ],
-      "definition": "卫宁健康的全部动态：WiNEX、医院信息系统 AI 能力与医疗大模型布局的持续追踪。"
+      "definition": "卫宁健康的 WiNEX 产品线、医疗大模型、项目中标与经营业绩。"
     },
     {
       "slug": "neusoft",
-      "name": "东软集团",
+      "name": "东软",
       "group": "company",
       "entityId": "neusoft",
-      "definition": "东软集团医疗板块的动态：东软医疗、东软望海、添翼健康与医院信息化 AI 能力的追踪。"
+      "definition": "东软集团医疗健康业务的产品发布、医院与医保项目、经营动态。"
+    },
+    {
+      "slug": "wonders",
+      "name": "万达信息",
+      "group": "company",
+      "entityId": "wonders",
+      "definition": "万达信息在区域卫生、公共卫生、医保与智慧城市健康领域的项目与业务动态。"
     },
     {
       "slug": "bsoft",
       "name": "创业慧康",
       "group": "company",
       "entityId": "bsoft",
-      "definition": "创业慧康的全部动态：医院信息化产品线、医疗大模型与合作经营的持续追踪。"
+      "definition": "创业慧康的医疗卫生信息化产品、区域与医院项目，以及经营与合作动态。"
     },
     {
-      "slug": "dhcc",
-      "name": "东华医为",
+      "slug": "yidu",
+      "name": "医渡科技",
       "group": "company",
-      "entityId": "dhcc",
-      "aliases": [
-        "iMedical"
-      ],
-      "definition": "东华医为（iMedical）的全部动态：医院信息系统、智慧医院方案与 AI 产品的持续追踪。"
+      "entityId": "yidu",
+      "definition": "医渡科技的医疗大数据与 AI 平台、大模型应用和商业化进展。"
     },
     {
-      "slug": "tencent-health",
-      "name": "腾讯健康",
+      "slug": "iflytek-health",
+      "name": "讯飞医疗",
       "group": "company",
-      "entityId": "tencent-health",
-      "aliases": [
-        "腾讯觅影",
-        "觅影"
-      ],
-      "definition": "腾讯健康的全部动态：腾讯觅影影像 AI、医疗大模型与微信医疗健康生态的持续追踪。"
+      "entityId": "iflytek-health",
+      "definition": "讯飞医疗的智医助理、医疗大模型、基层辅诊与医院 AI 应用。"
     },
     {
-      "slug": "jd-health",
-      "name": "京东健康",
+      "slug": "united-imaging",
+      "name": "联影",
       "group": "company",
-      "entityId": "jd-health",
-      "aliases": [
-        "京医千询"
-      ],
-      "definition": "京东健康的全部动态：京医千询大模型、互联网医疗与患者服务 AI 的持续追踪。"
+      "entityId": "united-imaging",
+      "definition": "联影医疗与联影智能的影像设备智能化、影像 AI 与医疗大模型。"
     },
     {
       "slug": "epic",
       "name": "Epic",
       "group": "company",
       "entityId": "epic",
-      "definition": "Epic 的全部动态：电子病历系统 AI 功能、医院部署与互操作生态的持续追踪。"
+      "definition": "美国电子病历厂商 Epic 的产品更新、AI 功能、互操作与市场动向。"
+    },
+    {
+      "slug": "oracle-health",
+      "name": "Oracle Health",
+      "group": "company",
+      "entityId": "oracle-health",
+      "aliases": [
+        "Cerner"
+      ],
+      "definition": "Oracle Health（原 Cerner）的电子病历新平台、AI 能力与重大项目进展。"
     },
     {
       "slug": "microsoft",
-      "name": "微软 / Nuance",
+      "name": "Microsoft / Nuance",
       "group": "company",
       "entityId": "microsoft",
       "aliases": [
-        "Nuance",
-        "DAX Copilot"
+        "Nuance"
       ],
-      "definition": "微软的医疗 AI 布局：Nuance DAX Copilot、Dragon Medical 与云端医疗服务的持续追踪。"
+      "definition": "微软及 Nuance 在医疗领域的 AI 病历记录、云与 Copilot 产品动态。"
     },
     {
-      "slug": "medical-llm",
-      "name": "医疗大模型",
-      "group": "field",
-      "tags": [
-        "医疗大模型"
+      "slug": "google",
+      "name": "Google Health",
+      "group": "company",
+      "entityId": "google",
+      "aliases": [
+        "DeepMind"
       ],
-      "definition": "面向诊疗、病历、科研与管理的医疗大模型：版本迭代、能力评测、注册获批与院内部署的全部动态。"
+      "definition": "Google 与 DeepMind 在医疗健康领域的 AI 模型、研究成果与产品动态。"
     },
     {
-      "slug": "ai-diagnosis",
-      "name": "AI辅助诊断",
-      "group": "field",
-      "tags": [
-        "AI辅助诊断"
-      ],
-      "definition": "AI 辅助诊断的进展：适应证与注册审批、临床验证、误诊漏诊争议与责任归属的追踪。"
+      "slug": "alibaba-health",
+      "name": "阿里健康",
+      "group": "company",
+      "entityId": "alibaba-health",
+      "definition": "阿里健康的医药电商、医疗 AI 与数字化医疗服务动态。"
     },
     {
-      "slug": "medical-imaging",
-      "name": "医学影像AI",
-      "group": "field",
-      "tags": [
-        "医学影像",
-        "病理AI"
-      ],
-      "definition": "影像与病理 AI 的最前线：肺结节、骨折、眼底等辅助诊断产品、临床试验与注册获批动态。"
+      "slug": "tencent-health",
+      "name": "腾讯健康",
+      "group": "company",
+      "entityId": "tencent-health",
+      "definition": "腾讯健康与腾讯医疗的医院数字化、医疗 AI 与互联网医疗动态。"
     },
     {
-      "slug": "cdss",
-      "name": "临床决策支持",
-      "group": "field",
-      "tags": [
-        "临床决策支持"
-      ],
-      "definition": "CDSS 临床决策支持系统：知识库与模型路线、院内落地效果与评价标准的动态。"
-    },
-    {
-      "slug": "medical-agent",
-      "name": "医疗智能体",
-      "group": "field",
-      "tags": [
-        "Agent"
-      ],
-      "definition": "医疗智能体与 Agent 编排：问诊、病历书写、随访与院内流程自动化的智能体产品、评测与落地边界。"
+      "slug": "dhcc",
+      "name": "东华医为",
+      "group": "company",
+      "entityId": "dhcc",
+      "definition": "东华医为（东华软件）的医院信息系统、区域卫生项目与经营动态。"
     },
     {
       "slug": "emr",
       "name": "电子病历",
       "group": "field",
       "tags": [
-        "电子病历",
-        "语音病历"
+        "电子病历"
       ],
-      "definition": "电子病历与智能病历：AI 病历生成、语音录入、结构化与电子病历分级评价的全部动态。"
+      "definition": "电子病历系统建设与应用水平分级评价：评级标准、通过名单、建设与升级经验。"
+    },
+    {
+      "slug": "interop",
+      "name": "互联互通",
+      "group": "field",
+      "tags": [
+        "互联互通"
+      ],
+      "definition": "医院信息互联互通标准化成熟度测评，以及集成平台与数据共享的建设实践。"
     },
     {
       "slug": "smart-hospital",
       "name": "智慧医院",
       "group": "field",
       "tags": [
-        "智慧医院"
+        "智慧服务",
+        "智慧管理"
       ],
-      "definition": "智慧医院整体建设：AI 在诊疗、管理、后勤与患者服务中的集成应用与评级测评动态。"
+      "definition": "智慧服务、智慧管理分级评估与智慧医院整体建设，覆盖患者服务、运营管理和后勤。"
     },
     {
-      "slug": "insurance-audit",
-      "name": "医保智能审核",
+      "slug": "internet-hospital",
+      "name": "互联网医院",
       "group": "field",
       "tags": [
-        "医保智能审核",
-        "DRG/DIP"
+        "互联网医院"
       ],
-      "definition": "医保智能审核与支付改革：AI 基金监管、DRG/DIP 分组与结算清单质控的动态。"
+      "definition": "互联网医院、线上复诊与处方流转、远程医疗的政策、平台与运营实践。"
     },
     {
-      "slug": "interop-fhir",
-      "name": "互联互通与FHIR",
+      "slug": "med-llm",
+      "name": "医疗大模型",
       "group": "field",
       "tags": [
-        "互联互通",
-        "FHIR"
+        "医疗大模型",
+        "医疗AI"
       ],
-      "definition": "医疗数据互操作：FHIR/HL7/DICOM 标准、共享文档规范与医院信息互联互通测评的追踪。"
+      "definition": "医疗大模型与 AI 应用：辅助诊断、病历生成、临床决策支持、AI 器械获批与医院落地。"
+    },
+    {
+      "slug": "imaging",
+      "name": "医学影像",
+      "group": "field",
+      "tags": [
+        "医学影像"
+      ],
+      "definition": "PACS、影像云、影像 AI 与远程影像诊断的产品和建设。"
+    },
+    {
+      "slug": "core-systems",
+      "name": "HIS 与核心系统",
+      "group": "field",
+      "tags": [
+        "HIS/核心系统",
+        "检验/病理",
+        "护理信息化"
+      ],
+      "definition": "HIS、LIS、病理、护理等医院核心业务系统的新一代架构、替换与升级。"
+    },
+    {
+      "slug": "data-platform",
+      "name": "集成平台与数据中台",
+      "group": "field",
+      "tags": [
+        "集成平台/数据中台",
+        "FHIR/互操作"
+      ],
+      "definition": "医院集成平台、临床数据中心、数据中台以及 HL7 FHIR 等互操作标准的落地。"
+    },
+    {
+      "slug": "regional",
+      "name": "区域卫生与医共体",
+      "group": "field",
+      "tags": [
+        "全民健康信息平台",
+        "医共体/基层"
+      ],
+      "definition": "全民健康信息平台、区域卫生信息化、紧密型医共体与基层医疗信息化。"
+    },
+    {
+      "slug": "insurance",
+      "name": "医保信息化",
+      "group": "field",
+      "tags": [
+        "医保信息平台",
+        "DRG/DIP",
+        "医保支付"
+      ],
+      "definition": "医保信息平台、医保编码、DRG/DIP 支付方式改革与智能审核监管。"
     },
     {
       "slug": "data-elements",
-      "name": "数据要素",
+      "name": "医疗数据要素",
       "group": "field",
       "tags": [
-        "数据要素"
+        "医疗数据要素"
       ],
-      "definition": "医疗数据要素流通：授权运营、数据质量治理、可信数据空间与收益分配的探索。"
+      "definition": "卫生健康数据要素化：数据资产、授权运营、可信数据空间与数据流通。"
     },
     {
-      "slug": "privacy-computing",
-      "name": "隐私计算",
+      "slug": "security",
+      "name": "网络与数据安全",
       "group": "field",
       "tags": [
-        "隐私计算"
+        "网络与数据安全",
+        "安全事件"
       ],
-      "definition": "医疗隐私计算：联邦学习、多方安全计算在科研协作与数据流通中的落地方案。"
+      "definition": "医疗行业的网络安全等级保护、数据安全合规、勒索攻击与数据泄露事件。"
     },
     {
-      "slug": "primary-care",
-      "name": "基层医疗AI",
+      "slug": "xinchuang",
+      "name": "信创与云",
       "group": "field",
       "tags": [
-        "基层医疗"
+        "信创",
+        "云/基础设施"
       ],
-      "definition": "AI 下沉基层：智医助理、辅助诊疗与公卫随访在县域和社区的部署与成效。"
+      "definition": "医疗信创国产化替代、医疗云与基础设施建设。"
     },
     {
-      "slug": "policy",
-      "name": "政策法规",
+      "slug": "public-health",
+      "name": "公共卫生与中医药",
+      "group": "field",
+      "tags": [
+        "公共卫生/疾控",
+        "中医药"
+      ],
+      "definition": "疾控信息化、传染病监测预警，以及中医药信息化。"
+    },
+    {
+      "slug": "policies",
+      "name": "政策发布",
       "group": "genre",
       "tags": [
-        "政策/法规"
+        "政策发布",
+        "征求意见"
       ],
-      "definition": "医疗 AI 相关政策法规：卫健委、医保局、药监局、工信部的文件、试点方案与监管处罚。"
+      "definition": "各级主管部门正式发布与公开征求意见的医疗信息化相关政策文件。"
     },
     {
       "slug": "standards",
-      "name": "标准规范",
+      "name": "标准与评级",
       "group": "genre",
       "tags": [
-        "标准/规范"
+        "标准规范",
+        "评级评审"
       ],
-      "definition": "行业标准与技术规范：WS/T、团体标准、测评与评级办法的发布与解读。"
+      "definition": "信息标准、技术规范，以及电子病历、互联互通、智慧服务等评级评审方案和结果。"
     },
     {
-      "slug": "approvals",
-      "name": "审批准入",
-      "group": "genre",
-      "tags": [
-        "审批/准入"
-      ],
-      "definition": "AI 医疗器械三类证注册审批、算法备案与医疗服务价格立项的实质进展。"
-    },
-    {
-      "slug": "product-launches",
+      "slug": "products",
       "name": "产品发布",
       "group": "genre",
       "tags": [
         "产品发布"
       ],
-      "definition": "医疗 AI 产品、系统与功能的发布和更新：能力、适用范围与可用状态的第一时间记录。"
+      "definition": "厂商新产品与解决方案的发布和重大版本更新。"
     },
     {
-      "slug": "hospital-use",
-      "name": "医院应用",
+      "slug": "practices",
+      "name": "建设实践",
       "group": "genre",
       "tags": [
-        "医院应用"
+        "建设实践"
       ],
-      "definition": "医院真实落地：上线、试点、成效数据、分级评价结果与院内项目招标验收。"
+      "definition": "医院与区域的信息化项目上线、评级通过与可借鉴的建设经验。"
     },
     {
-      "slug": "data-interop",
-      "name": "数据互操作",
+      "slug": "bidding",
+      "name": "招投标与中标",
       "group": "genre",
       "tags": [
-        "数据/互操作"
+        "招投标/中标"
       ],
-      "definition": "卫生信息数据集、术语编码与共享文档规范的技术进展。"
+      "definition": "医疗信息化项目的招标、采购意向与中标结果。"
     },
     {
-      "slug": "papers",
-      "name": "论文研究",
+      "slug": "business",
+      "name": "企业经营与资本",
       "group": "genre",
       "tags": [
-        "论文/研究"
+        "企业经营",
+        "融资并购"
       ],
-      "definition": "有临床验证价值的论文与研究：多中心试验、真实世界研究与公开数据集。"
+      "definition": "医疗 IT 厂商的财报业绩、融资并购与人事变动。"
     },
     {
-      "slug": "benchmarks",
-      "name": "评测基准",
+      "slug": "research",
+      "name": "研究与报告",
       "group": "genre",
       "tags": [
-        "评测/基准"
+        "研究/报告"
       ],
-      "definition": "医疗大模型与 AI 产品的评测：公开基准、测评榜单与方法论争议。"
-    },
-    {
-      "slug": "safety-ethics",
-      "name": "安全伦理",
-      "group": "genre",
-      "tags": [
-        "安全/伦理"
-      ],
-      "definition": "医疗 AI 的风险面：误诊漏诊、算法偏见、隐私泄露、知情同意与伦理审查。"
-    },
-    {
-      "slug": "industry-news",
-      "name": "产业动态",
-      "group": "genre",
-      "tags": [
-        "产业动态"
-      ],
-      "definition": "医疗 AI 产业的商业脉搏：融资并购、财报人事、合作签约与安全事件调查。"
+      "definition": "医学信息学论文、行业报告、白皮书与统计数据。"
     },
     {
       "slug": "opinions",
-      "name": "观点评论",
+      "name": "观点解读",
       "group": "genre",
       "tags": [
-        "观点/评论"
+        "观点解读"
       ],
-      "definition": "行业关键人物在想什么：CIO 访谈、政策解读与趋势判断的集合。"
-    },
-    {
-      "slug": "practice",
-      "name": "实践方法",
-      "group": "genre",
-      "tags": [
-        "实践/方法"
-      ],
-      "definition": "可照着做的实施经验：选型、运维、落地踩坑与方法复盘。"
+      "definition": "政策解读、CIO 与专家访谈、趋势判断。"
     }
   ]
 }

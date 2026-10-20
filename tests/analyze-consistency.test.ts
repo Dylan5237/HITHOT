@@ -20,8 +20,8 @@ const provider = await stub(async (_hit, request) => {
   }
   const content = step === "prefilter" ? { label: "PASS", reason: "local fixture" }
     : step === "score" ? { attentionScore: SELECTING_SCORE }
-    : step === "structure" ? { category: "product", tags: [], subjects: [], scope: "single", fact: null }
-    : { itemType: "product_launch", authorRole: "principal", tags: ["产品发布"], editorialJudgment: "产品能力提升", titleZh: "厂商发布新产品", summaryZh: "厂商发布新产品，并公布了评测结果与价格。" };
+    : step === "structure" ? { category: "policy", tags: [], subjects: [], scope: "single", fact: null }
+    : { itemType: "policy_release", authorRole: "principal", tags: ["政策发布"], editorialJudgment: "模型能力提升", titleZh: "实验室发布新模型", summaryZh: "实验室发布新模型，并公布了评测结果与价格。" };
   return { choices: [{ message: { content: JSON.stringify(content) } }] };
 });
 pointModels(provider.url);
@@ -31,8 +31,8 @@ before(async () => {
 });
 after(async () => { await stopBoss(); await provider.close(); await closeDb(); });
 
-const material = (name: string) => ({ sourceId, url: `https://example.org/${sourceId}/${name}`, title: `A vendor releases a product ${name}`,
-  bodyText: `A vendor released a medical AI product ${name}. ` + "The release includes benchmark results and pricing details. ".repeat(12),
+const material = (name: string) => ({ sourceId, url: `https://example.org/${sourceId}/${name}`, title: `A lab releases a model ${name}`,
+  bodyText: `A lab released a model ${name}. ` + "The release includes benchmark results and pricing details. ".repeat(12),
   bodyStatus: "ok" as const, via: "fetch" as const, publishedAt: new Date() });
 
 test("a late successful analysis preserves newer input awaiting processing", async () => {
@@ -43,7 +43,7 @@ test("a late successful analysis preserves newer input awaiting processing", asy
   const pending = processArticle(articleId);
   await waiting.entered.promise;
   try {
-    const revised = await upsertMaterial({ ...input, title: "The vendor corrects the release", bodyText: "Corrected benchmark and pricing details. ".repeat(12) });
+    const revised = await upsertMaterial({ ...input, title: "The lab corrects the release", bodyText: "Corrected benchmark and pricing details. ".repeat(12) });
     assert.equal(revised.revised, true);
   } finally {
     hold = null;

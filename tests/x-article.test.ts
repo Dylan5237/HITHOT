@@ -24,7 +24,7 @@ const WITH_ARTICLE = String(BASE + 2n);
 const WITHOUT_ARTICLE = String(BASE + 1n);
 
 const post = (id: string, articleNo: string): SdTweet => ({
-  id_str: id, tweet_created_at: new Date().toISOString(), full_text: "https://t.co/abc", lang: "zxx", user: { name: "Wang", screen_name: HANDLE },
+  id_str: id, tweet_created_at: new Date().toISOString(), full_text: "https://t.co/abc", lang: "zxx", user: { name: "Fei", screen_name: HANDLE },
   entities: { urls: [{ url: "https://t.co/abc", expanded_url: `https://x.com/i/article/${articleNo}` }] },
 });
 
@@ -37,7 +37,7 @@ const socialdata = await stub((_hit, req) => {
     // Looked up by the post's id; the post without one answers with the post alone.
     return article === WITH_ARTICLE
       ? { id_str: article, article: { title: "To Seek a Newer World", content_state: { blocks: [
-          { type: "unstyled", text: "Yidu Tech is joining Neusoft." }, { type: "atomic", text: " " }, { type: "header-two", text: "Why" }, { type: "blockquote", text: "Come, my friends" },
+          { type: "unstyled", text: "World Labs is joining AMD." }, { type: "atomic", text: " " }, { type: "header-two", text: "Why" }, { type: "blockquote", text: "Come, my friends" },
         ] } } }
       : { id_str: article };
   }
@@ -74,11 +74,11 @@ test("a post that links an X Article waits for extraction, which brings the arti
   assert.equal(a!.title, "To Seek a Newer World", "a bare link takes the article's title");
   assert.equal(a!.body_status, "ok");
   assert.equal(a!.revision, 2);
-  assert.equal(a!.x_article.text, "Yidu Tech is joining Neusoft.\n\n## Why\n\n> Come, my friends");
-  assert.match(a!.body_text, /^https:\/\/x\.com\/i\/article\/777\n\n# To Seek a Newer World\n\nYidu Tech is joining Neusoft\./);
+  assert.equal(a!.x_article.text, "World Labs is joining AMD.\n\n## Why\n\n> Come, my friends");
+  assert.match(a!.body_text, /^https:\/\/x\.com\/i\/article\/777\n\n# To Seek a Newer World\n\nWorld Labs is joining AMD\./);
 
   const input = (await loadAnalyzeInput(id))!;
-  assert.match(String(input.xPost!.text), /【X 长文】To Seek a Newer World\n\nYidu Tech is joining Neusoft\./, "every judging step reads the article");
+  assert.match(String(input.xPost!.text), /【X 长文】To Seek a Newer World\n\nWorld Labs is joining AMD\./, "every judging step reads the article");
   assert.doesNotMatch(renderContext(input), /正文未抓到/);
 
   // The same post read again (a later search, an overlap) is the version already seen.

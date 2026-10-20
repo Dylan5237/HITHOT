@@ -25,10 +25,10 @@ const provider = await stub(async (_hit, request) => {
     held.asked.open();
     await held.answer.promise;
   }
-  const content = step === "prefilter" ? { label: "PASS", reason: "medical AI product launch" }
+  const content = step === "prefilter" ? { label: "PASS", reason: "AI model release" }
     : step === "score" ? { attentionScore: SELECTING_SCORE }
-      : step === "structure" ? { category: "product", tags: ["产品发布"], subjects: [], fact: { title: "新产品发布" } }
-        : { itemType: "product_launch", authorRole: "principal", tags: ["产品发布"], editorialJudgment: "产品有明确的能力提升", titleZh: `新产品发布 ${T}`, summaryZh: "产品发布并提供了评测和价格。" };
+      : step === "structure" ? { category: "policy", tags: ["政策发布"], subjects: [], fact: { title: "新政策发布" } }
+        : { itemType: "policy_release", authorRole: "principal", tags: ["政策发布"], editorialJudgment: "模型有明确的能力提升", titleZh: `新政策发布 ${T}`, summaryZh: "政策发布并提供了评测和价格。" };
   return { id: `stub-${calls.length}`, choices: [{ message: { content: JSON.stringify(content) } }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } };
 });
 
@@ -94,8 +94,8 @@ async function kill(running: ReturnType<typeof worker>) {
 
 async function article(scenario: string) {
   const { articleId } = await upsertMaterial({
-    sourceId: SOURCE, url: `https://example.org/analyze-kill-${T}/${scenario}`, title: `Medical AI product launch ${T} ${scenario}`,
-    bodyText: `A health IT vendor released a new medical AI product with evaluations and prices. ${T} ${scenario} ` + "The release explains product capabilities and evaluation results. ".repeat(10),
+    sourceId: SOURCE, url: `https://example.org/analyze-kill-${T}/${scenario}`, title: `AI model release ${T} ${scenario}`,
+    bodyText: `An AI lab released a new model with benchmarks and prices. ${T} ${scenario} ` + "The release explains model capabilities and evaluation results. ".repeat(10),
     bodyStatus: "ok", language: "en", via: "fetch", publishedAt: new Date(),
   });
   return articleId;

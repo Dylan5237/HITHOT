@@ -33,8 +33,8 @@ const provider = await stub(async (_hit, request) => {
   }
   const content = step === "prefilter" ? { label: original ? "BLOCK" : "PASS", reason: "local fixture" }
     : step === "score" ? { attentionScore: SELECTING_SCORE }
-    : step === "structure" ? { category: "product", tags: [], subjects: [], fact: null }
-    : { itemType: "product_launch", authorRole: "principal", tags: ["产品发布"], editorialJudgment: "产品能力提升", titleZh: `新判断 ${T}`, summaryZh: "产品发布并提供评测和价格。" };
+    : step === "structure" ? { category: "policy", tags: [], subjects: [], fact: null }
+    : { itemType: "policy_release", authorRole: "principal", tags: ["政策发布"], editorialJudgment: "模型能力提升", titleZh: `新判断 ${T}`, summaryZh: "政策发布并提供评测和价格。" };
   return { choices: [{ message: { content: JSON.stringify(content) } }] };
 });
 pointModels(provider.url);
@@ -49,8 +49,8 @@ afterEach(async () => {
 });
 
 async function article(name: string) {
-  return (await upsertMaterial({ sourceId: SOURCE, url: `https://example.org/${T}/${name}`, title: `Medical AI product ${T} ${name}`,
-    bodyText: `Vendor release ${T} ${name}. ` + "The new product includes evaluation and price details. ".repeat(12),
+  return (await upsertMaterial({ sourceId: SOURCE, url: `https://example.org/${T}/${name}`, title: `AI model ${T} ${name}`,
+    bodyText: `AI lab release ${T} ${name}. ` + "The new model includes benchmark and price details. ".repeat(12),
     bodyStatus: "ok", via: "fetch", backfill: "test fixture", publishedAt: new Date() })).articleId;
 }
 
@@ -59,6 +59,9 @@ async function wakeAnalysis() {
   const boss = await getBoss();
   for (const worker of boss.getWipData()) if (worker.name === QUEUES.analyze) boss.notifyWorker(worker.id);
 }
+
+/** The analysis jobs just queued, queued a minute ago: the fetch's `start_after <= now` holds even when the VM's clock steps back (on the CI VMs by as much as 0.4 s). */
+const queuedMinuteAgo = () => sql`UPDATE pgboss.job SET start_after = start_after - interval '1 minute' WHERE name = ${QUEUES.analyze} AND state = 'created'`;
 
 async function waitFor(check: () => Promise<boolean>) {
   const deadline = Date.now() + 15_000;
@@ -72,7 +75,7 @@ test("a failed audit rolls back the receipt release and the processing job", asy
   const id = await article("atomic");
   await sql`UPDATE articles SET processing_state='failed',processing_error='unknown receipt' WHERE id=${id}`;
   const [receipt] = await sql<{ id: number }[]>`INSERT INTO receipts (logical_key,service,purpose,subject,status)
-    VALUES (${`atomic-${T}`},'deepseek','score_article',${`article:${id}@1`},'unknown') RETURNING id`;
+    VALUES (${`atomic-${T}`},'iflytek-health','score_article',${`article:${id}@1`},'unknown') RETURNING id`;
   await sql.unsafe(`CREATE FUNCTION fail_release_audit() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN IF NEW.actor = 'test-release-atomic' THEN RAISE EXCEPTION 'injected audit failure'; END IF; RETURN NEW; END $$`);
   await sql.unsafe("CREATE TRIGGER fail_release_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_release_audit()");
@@ -89,8 +92,24 @@ test("a failed audit rolls back the receipt release and the processing job", asy
   assert.equal(released?.requeued, true);
   assert.equal((await sql`SELECT 1 FROM audit_log WHERE subject=${`receipt:${receipt!.id}`} AND action='receipt.release'`).length, 1);
   const boss = await getBoss();
+  await queuedMinuteAgo();
   const jobs = await boss.fetch(QUEUES.analyze);
   for (const job of jobs) await boss.complete(QUEUES.analyze, job.id);
+});
+
+test("an authorized recovery preserves unknown billing instead of claiming no charge", async () => {
+  const id = await article("billing-unknown");
+  await sql`UPDATE articles SET processing_state='failed',processing_error='unknown receipt' WHERE id=${id}`;
+  const [receipt] = await sql<{ id: number }[]>`INSERT INTO receipts(logical_key,service,purpose,subject,status)
+    VALUES(${`billing-unknown-${T}`},'iflytek-health','summarize_article',${`article:${id}@1`},'unknown') RETURNING id`;
+  await sql`INSERT INTO receipt_attempts(receipt_id,service,attempt,status,error) VALUES(${receipt!.id},'iflytek-health',1,'unknown','request timed out')`;
+  const result = await releaseReceipt(receipt!.id, { billed: null, note: "owner authorized recovery; billing remains unknown" }, "test");
+  assert.equal(result?.requeued, true);
+  const [record] = await sql`SELECT error FROM receipts WHERE id=${receipt!.id}`;
+  assert.match(record!.error, /计费未知/);
+  assert.doesNotMatch(record!.error, /供应商未计费/);
+  const [logged] = await sql`SELECT after FROM audit_log WHERE action='receipt.release' AND subject=${`receipt:${receipt!.id}`}`;
+  assert.equal(logged!.after.billed, null);
 });
 
 test("a manual re-evaluation survives extraction, a lost job, and receipt release with the same paid identity", async () => {
@@ -98,18 +117,21 @@ test("a manual re-evaluation survives extraction, a lost job, and receipt releas
   const attemptTag = `admin:${T}`;
   const boss = await getBoss();
   await queueProcessing(id, { attemptTag });
+  await queuedMinuteAgo();
   const [job] = await boss.fetch(QUEUES.analyze);
   assert.ok(job);
   await boss.complete(QUEUES.analyze, job.id);
   // The extraction job carries only articleId; its handoff must retain the evaluation identity.
   await queueProcessing(id, { step: "analyze" });
+  await queuedMinuteAgo();
   const [afterBody] = await boss.fetch(QUEUES.analyze);
   assert.deepEqual(afterBody!.data, { articleId: id, attemptTag });
   await boss.complete(QUEUES.analyze, afterBody!.id);
   await sql`UPDATE articles SET processing_state='failed' WHERE id=${id}`;
   const [r] = await sql<{ id: number }[]>`INSERT INTO receipts (logical_key,service,purpose,subject,status)
-    VALUES (${`identity-${T}`},'deepseek','score_article',${`article:${id}@1`},'unknown') RETURNING id`;
+    VALUES (${`identity-${T}`},'iflytek-health','score_article',${`article:${id}@1`},'unknown') RETURNING id`;
   await releaseReceipt(r!.id, { billed: false, note: "verified" }, "test");
+  await queuedMinuteAgo();
   const [afterRelease] = await boss.fetch(QUEUES.analyze);
   assert.deepEqual(afterRelease!.data, { articleId: id, attemptTag });
   await boss.complete(QUEUES.analyze, afterRelease!.id);
@@ -120,12 +142,16 @@ test("an already released receipt wakes its failed grouping job once, with the o
   const [receipt] = await sql<{ id: number }[]>`INSERT INTO receipts (logical_key,service,purpose,subject,status)
     VALUES (${`embedding-${T}`},'dashscope','embedding',${`article:${id}`},'unknown') RETURNING id`;
   const data = { articleId: id, signalOnly: true };
-  const jobId = await enqueue(QUEUES.group, data, { retryLimit: 0, singletonKey: id });
+  // Queued and run a minute ago, its receipt released by the admin half a minute ago; the woken job runs now. Stamps
+  // made milliseconds apart would trade places when the VM's clock steps back (on the CI VMs by as much as 0.4 s).
+  const jobId = await enqueue(QUEUES.group, data, { retryLimit: 0, singletonKey: id, startAfter: new Date(Date.now() - 60_000) });
   const boss = await getBoss();
   const [initial] = await boss.fetch(QUEUES.group);
   assert.equal(initial!.id, jobId);
   await boss.fail(QUEUES.group, jobId!, new ReceiptUnknownError(receipt!.id, "receipt outcome unknown"));
+  await sql`UPDATE pgboss.job SET started_on = now() - interval '1 minute' WHERE id = ${jobId!}`;
   await releaseReceipt(receipt!.id, { billed: false, note: "verified" }, "test");
+  await sql`UPDATE audit_log SET created_at = now() - interval '30 seconds' WHERE action = 'receipt.release' AND subject = ${`receipt:${receipt!.id}`}`;
   // This also covers a process stopping just after the release, before waking the queue.
   await recoverStaleWork();
   const [resumed] = await boss.fetch(QUEUES.group);
