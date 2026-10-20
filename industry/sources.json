@@ -431,7 +431,8 @@
         "综合"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "web-chima-policy",

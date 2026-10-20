@@ -42,7 +42,10 @@ function leadText(node: PageNode, out: string[] = [], length = { chars: 0 }): st
 
 /** The page, parsed once, after its title, main heading and opening text passed the boundary check. */
 export function contentDocument(html: string) {
-  const { document } = parseHTML(html);
+  // A browser keeps everything after an early </body> or </html> inside the body (HTML parsing "after body"
+  // modes); linkedom closes the document there instead, leaving the article outside <html>, where
+  // Readability walks past the root looking for BODY and throws (gov.cn policy pages: <html><body>…</html></body></html>).
+  const { document } = parseHTML(html.replace(/<\/(?:body|html)\s*>/gi, ""));
   const body = document.querySelector("body");
   assertPageContent(document.querySelector("title")?.textContent ?? "", body ? leadText(body as unknown as PageNode) : stripTags(html));
   assertPageContent(document.querySelector("h1")?.textContent ?? "", "");

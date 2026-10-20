@@ -10,7 +10,7 @@
 | `site/brand/` | 新图标（医疗十字 + 心电线），日报/周报/月报报头按新行业词重新生成 |
 | `industry/taxonomy.ts` | 7 个类别：政策、医疗AI、产品、实践、行业、研究、观点；分类标签、主题标签、机构与厂商名录、防张冠李戴词典；报头统计“N 份新政策” |
 | `industry/topics.json` | 36 个主题：14 个机构与厂商，14 个建设方向（电子病历、互联互通、智慧医院、医保信息化、医疗大模型……），8 个内容类型 |
-| `industry/sources.json` | 21 个示范信源（见下表），2026-10-19 在沙盒用项目自带的采集器实测；2026-10-20 又从部署服务器（阿里云乌兰察布机房 IP）逐个复测，FDA 与 MedCity 被反爬拦掉，已改为默认停用 |
+| `industry/sources.json` | 21 个示范信源（见下表），18 个启用。2026-10-19 在沙盒用项目自带的采集器实测；2026-10-20 又从部署服务器（阿里云乌兰察布机房 IP）逐个复测，FDA 与 MedCity 被反爬拦掉、雷峰网实测医疗信息化命中为 0，三个都改为默认停用 |
 | `industry/prompts/` | 预筛、评分标准、内容理解、结构化、术语规则、标题规则、摘要与翻译，全部换成医疗信息化的口径 |
 | `industry/wording.ts` | 禁止“重磅、炸裂、全面赋能”这类说法 |
 
@@ -33,10 +33,10 @@
 | HL7 International：The Standard | rss | T1_5 | FHIR 等标准组织的官方博客 |
 | Google Health 博客 | rss | T1 | 厂商官方 |
 | FDA Press Releases | rss | T1 | **默认停用**（`enabled: false`）。沙盒可抓；从国内机房请求被 302 跳到 `fda.gov/apology_objects/abuse-detection-apology.html`，是 FDA 的反爬，按合规原则不绕过 |
-| JMIR Medical Informatics | rss | T1 | 医学信息学期刊 |
-| HIStalk、Healthcare Dive、STAT Health Tech、Healthcare IT Today、HIT Consultant | rss | T2 | 海外医疗 IT 媒体，国内机房实测均可直连 |
+| JMIR Medical Informatics | rss | T1 | 医学信息学期刊。**文章页从国内机房返回 202 + 空正文**，只有订阅摘要可用，按摘要判定 |
+| HIStalk、Healthcare Dive、STAT Health Tech、Healthcare IT Today、HIT Consultant | rss | T2 | 海外医疗 IT 媒体，国内机房实测订阅均可直连。**HIStalk 的文章页返回 307 且不带 `location`**（订阅本身正常），同样按订阅摘要判定；这两处都是站点对机房 IP 的反爬，按合规原则不绕过 |
 | MedCity News Health Tech | rss | T2 | **默认停用**（`enabled: false`）。沙盒可抓；从国内机房返回 403 + Cloudflare「Just a moment...」人机验证，不绕过 |
-| 雷峰网 | rss | T2 | 科技综合媒体，医疗内容由预筛留下 |
+| 雷峰网 | rss | T2 | **默认停用**（`enabled: false`）。科技综合媒体，实测医疗信息化命中为 0，开着只消耗预筛额度 |
 | CHIMA 政策法规 | web_list | T2 | 中国医院协会信息专业委员会转载的政策文件，4 小时一次 |
 | CHIMA 案例分享 | web_list | T2 | 医院信息化建设案例，6 小时一次 |
 | 动脉网 | web_list | T2 | 医疗健康产业媒体首页；列表页多数条目没日期，靠详情页 `span.spa2` 补齐 |
@@ -76,6 +76,8 @@ docker compose up -d --build
 打开 http://localhost:3000，后台在 `/admin`（密码在 `.env` 的 `ADMIN_PASSWORD`）。部署到服务器、配置域名与 HTTPS 见 `docs/deploy.md`。
 
 ## 验证记录
+
+- 正文提取修复（2026-10-20）：gov.cn 政策页在 `<body>` 里夹了一个页头片段自带的 `</html>`，linkedom 把正文留在文档外，Readability 抛 TypeError，被抓取路径吞掉后误报成 `JINA_API_KEY is not configured`；修好后又发现页面同时有电脑版和手机版两份正文，读出来会翻倍。见 `packages/backend/src/lib/page-content.ts`、`content/extract.ts` 和 `tests/malformed-html-extraction.test.ts`。
 
 - `npm run typecheck`：通过。
 - `npm test`（928 项）：903 通过，其余 25 项与改动前的原版仓库一致，均为环境原因（沙盒缺 `pg_dump`/`tar` 备份链路、standalone 用例需先 `npm run build -w @aihot/web`）。构建后 standalone 用例 14/14 通过。

@@ -6,6 +6,7 @@ import { sql } from "../db.ts";
 import { guardedFetch, languageHeaders } from "../lib/http-fetch.ts";
 import { assertPageContent, contentDocument, UnavailablePageError } from "../lib/page-content.ts";
 import { stripTags } from "../lib/text.ts";
+import { logError } from "../lib/log-error.ts";
 import { isVideoPageUrl } from "../lib/video-url.ts";
 import { jinaRead } from "../providers/jina.ts";
 import { BudgetExceededError } from "../providers/receipts.ts";
@@ -346,6 +347,27 @@ function describeFigureDrawings(document: Doc) {
   }
 }
 
+/**
+ * Responsive pages can carry the same article twice, one copy for desktop and one for phones, and leave the
+ * choice to a stylesheet (gov.cn policy pages: #UCAP-CONTENT and .pages_content.pchide). Readability does not
+ * apply stylesheets and would join both copies, so a later block whose words exactly repeat an earlier,
+ * separate block of article length is removed. Wrappers around one copy are not repeats of it.
+ */
+function dropRepeatedCopies(document: Doc): void {
+  const seen: El[] = [];
+  const firstByText = new Map<string, El>();
+  for (const el of document.querySelectorAll("div, section, article, main")) {
+    if (!el.parentNode || seen.some((removed) => removed.contains(el))) continue;
+    const key = words(el.textContent ?? "");
+    if (key.length < MIN_BODY_CHARS) continue;
+    const first = firstByText.get(key);
+    if (!first) { firstByText.set(key, el); continue; }
+    if (first.contains(el) || el.contains(first)) continue;
+    el.remove();
+    seen.push(el);
+  }
+}
+
 /** readable() on a page already parsed and checked (contentDocument). Readability changes the document. */
 export function readableDocument(document: Doc, url: string, rules: PageRules = {}): ExtractedBody | null {
   if (isVideoPageUrl(url)) return null;
@@ -361,6 +383,7 @@ export function readableDocument(document: Doc, url: string, rules: PageRules = 
   settleInlineVisibility(document);
   preserveWidgets(document, rules.preserve ?? []);
   describeFigureDrawings(document);
+  dropRepeatedCopies(document);
   const article = new Readability(document as unknown as ConstructorParameters<typeof Readability>[0], { charThreshold: MIN_BODY_CHARS, keepClasses: false }).parse();
   if (!article?.content) return null;
   const clean = trimTrailingChrome(sanitizeBody(article.content, url));
@@ -391,8 +414,9 @@ export async function extractFromUrl(url: string, subject: string, rules: PageRu
       const got = readable(res.text(), res.url, rules);
       if (got) return got;
     }
-  } catch {
-    // fall through to Jina
+  } catch (error) {
+    // Fall through to Jina, but say why: a parser error here is ours to fix, not a missing Reader key.
+    console.warn(JSON.stringify({ level: "warn", msg: "direct article read failed; trying Reader", url, err: logError(error) }));
   }
   if (opts.paidFallback === false) return null;
   try {
