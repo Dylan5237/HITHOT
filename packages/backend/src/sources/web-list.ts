@@ -82,9 +82,23 @@ async function fetchListingText(source: SourceRow): Promise<{ text: string; viaJ
     return { text: page.markdown, viaJina: true, base: source.config.baseUrl ?? target };
   }
   const res = requireOk(await fetchListing(url, { headers: { accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8", ...languageHeaders(source.config.acceptLanguage) }, timeoutMs: 25_000 }));
-  const text = res.text();
+  const text = unwrapJsonHtml(res.text());
   contentDocument(text);
   return { text, viaJina: false, base: source.config.baseUrl ?? res.url };
+}
+
+/**
+ * Some CMSes (讯飞医疗, 2026-10) answer an Accept header that names JSON with the page's HTML as one
+ * JSON string ("<!doctype html>\n…"); the listing is that HTML. Any other JSON stays as it was.
+ */
+export function unwrapJsonHtml(text: string): string {
+  if (!/^\s*"/.test(text)) return text;
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === "string" && /^\s*</.test(value) ? value : text;
+  } catch {
+    return text;
+  }
 }
 
 /** A listing title that is no headline: a label that swallowed its summary, or a call to action. */

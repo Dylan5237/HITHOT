@@ -138,6 +138,8 @@ export const PUBLISHER_DOMAINS: ReadonlyArray<{ entityId: string; domains: reado
   { entityId: "nhsa", domains: ["nhsa.gov.cn"] },
   { entityId: "nmpa", domains: ["nmpa.gov.cn"] },
   { entityId: "nda", domains: ["nda.gov.cn"] },
+  { entityId: "yidu", domains: ["yidutech.com"] },
+  { entityId: "iflytek-health", domains: ["xunfeihealthcare.com"] },
   { entityId: "epic", domains: ["epic.com"] },
   { entityId: "google", domains: ["blog.google", "health.google"] },
 ];

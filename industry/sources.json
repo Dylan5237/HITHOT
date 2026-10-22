@@ -539,6 +539,151 @@
       "site_fulltext": false,
       "syndicate_fulltext": false,
       "enabled": true
+    },
+    {
+      "id": "web-yidu-news",
+      "name": "医渡科技 公司新闻",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.yidutech.com/news-list-company.html",
+        "parseMode": "html",
+        "itemSelector": "div.col-xs-8.col-md-8",
+        "linkSelector": "a[href*='news-detail.html']",
+        "titleSelector": "h3.tit",
+        "publishedAtSelector": "p.date",
+        "allowUrlPrefixes": [
+          "https://www.yidutech.com/news-detail.html"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "owner_entity_id": "yidu",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "厂商"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-iflytek-health-news",
+      "name": "讯飞医疗 企业动态",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.xunfeihealthcare.com/news/181.html",
+        "parseMode": "html",
+        "itemSelector": "li:has(a[href*='/news/181/'])",
+        "linkSelector": "a[href*='/news/181/']",
+        "titleSelector": ".tit",
+        "allowUrlPrefixes": [
+          "https://www.xunfeihealthcare.com/news/181/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "detail": {
+          "publishedAtSelector": ".z_hxxq_page .time"
+        }
+      },
+      "tier": "T1_5",
+      "owner_entity_id": "iflytek-health",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "厂商"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-bjwjw-policy",
+      "name": "北京市卫健委 政策文件",
+      "kind": "web_list",
+      "config": {
+        "url": "https://wjw.beijing.gov.cn/zwgk_20040/zcwj2024/zcwjss/",
+        "parseMode": "html",
+        "itemSelector": "div.search2-con1-text",
+        "linkSelector": "a",
+        "titleSelector": "span.pc-hide",
+        "publishedAtRegex": "【\\s*(\\d{4}-\\d{2}-\\d{2})\\s*】",
+        "allowUrlPrefixes": [
+          "https://wjw.beijing.gov.cn/zwgk_20040/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "detail": {
+          "titleRegex": "<meta\\s+name=\"ArticleTitle\"\\s+content=\"([^\"]+)\"",
+          "titleAuthoritative": true
+        }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-bjwjw-interpret",
+      "name": "北京市卫健委 政策解读",
+      "kind": "web_list",
+      "config": {
+        "url": "https://wjw.beijing.gov.cn/zwgk_20040/zcjd2024/",
+        "parseMode": "html",
+        "itemSelector": "div.weinei_left_con_line",
+        "linkSelector": "a",
+        "titleSelector": "span.pc-hide",
+        "publishedAtSelector": ".weinei_left_con_line_date",
+        "allowUrlPrefixes": [
+          "https://wjw.beijing.gov.cn/zwgk_20040/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "web-gdwjw-work",
+      "name": "广东省卫健委 工作动态",
+      "kind": "web_list",
+      "config": {
+        "url": "https://wsjkw.gd.gov.cn/zwyw_gzdt/index.html",
+        "parseMode": "html",
+        "itemSelector": "div.section.list ul > li",
+        "linkSelector": "a",
+        "titleSelector": "a",
+        "publishedAtSelector": "span",
+        "allowUrlPrefixes": [
+          "https://wsjkw.gd.gov.cn/zwyw_gzdt/content/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "官方"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
     }
   ]
 }
