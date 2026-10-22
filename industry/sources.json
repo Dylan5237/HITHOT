@@ -508,6 +508,7 @@
           "initialBackfillLimit": 8
         },
         "detail": {
+          "maxFetches": 12,
           "publishedAtSelector": "span.spa2"
         }
       },
@@ -585,6 +586,7 @@
           "initialBackfillLimit": 8
         },
         "detail": {
+          "maxFetches": 12,
           "publishedAtSelector": ".z_hxxq_page .time"
         }
       },
@@ -616,6 +618,7 @@
           "initialBackfillLimit": 8
         },
         "detail": {
+          "maxFetches": 12,
           "titleRegex": "<meta\\s+name=\"ArticleTitle\"\\s+content=\"([^\"]+)\"",
           "titleAuthoritative": true
         }
