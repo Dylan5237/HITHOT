@@ -37,6 +37,9 @@ const NESTED: Record<string, string[]> = {
   ],
 };
 
+/** Detail entries that make the collector read the article page; configuring one needs a budget. */
+const DETAIL_READ_KEYS = ["publishedAtSelector", "publishedAtRegex", "publishedAtAuthoritative", "upgradeDatePrecision", "titleSelector", "titleRegex", "summarySelector"];
+
 /** Article widgets to preserve (PreserveRule in content/extract.ts): { selector, as: "pre" | "table" }, a code block's `code` and `caption` parts. */
 const preserveRules = (value: unknown) => Array.isArray(value) && value.every((rule) => {
   if (!rule || typeof rule !== "object") return false;
@@ -78,7 +81,11 @@ export function unsupportedConfig(kind: SourceRow["kind"], config: Record<string
     else if (VALUES[key] && !VALUES[key]!.includes(String(value))) out.push(`${key}=${String(value)}`);
     else if (NESTED[key] && value && typeof value === "object") {
       for (const sub of Object.keys(value)) if (!NESTED[key]!.includes(sub)) out.push(`${key}.${sub}`);
-      if (key === "detail" && "preserve" in value && !preserveRules((value as { preserve: unknown }).preserve)) out.push("detail.preserve");
+      if (key === "detail") {
+        if ("preserve" in value && !preserveRules((value as { preserve: unknown }).preserve)) out.push("detail.preserve");
+        const budget = (value as { maxFetches?: unknown }).maxFetches;
+        if (DETAIL_READ_KEYS.some((rule) => rule in value) && (!Number.isInteger(budget) || Number(budget) <= 0)) out.push("detail.maxFetches");
+      }
     }
   }
   return out;
