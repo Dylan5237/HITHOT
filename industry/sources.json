@@ -687,6 +687,35 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "web-sh-wsjkw-notice",
+      "name": "上海市卫健委 通知公告",
+      "kind": "web_list",
+      "config": {
+        "url": "https://wsjkw.sh.gov.cn/ggl1/index.html",
+        "parseMode": "html",
+        "itemSelector": "ul.list-date > li",
+        "linkSelector": "a",
+        "titleSelector": "a",
+        "publishedAtSelector": "span.time",
+        "allowUrlPrefixes": [
+          "https://wsjkw.sh.gov.cn/ggl1/",
+          "https://wsjkw.sh.gov.cn/zqyj/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "官方",
+        "政策"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
     }
   ]
 }
