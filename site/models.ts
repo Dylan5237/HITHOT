@@ -18,6 +18,18 @@ export const PRESETS: Record<string, ModelPreset> = {
     extra: { thinking: { type: "enabled", clear_thinking: false }, reasoning_effort: "high", top_p: 0.95 }, jsonMode: true, vision: true,
     scoreCall: { temperature: 1, maxTokens: 65_536, timeoutMs: 180_000 },
   },
+  // GLM-5.3 through the deployment's OpenAI-compatible endpoint (LLM_BASE_URL), not the ZHIPU_* pair.
+  // The model list exposes the dated id; the endpoint answers with the glm-5-3-flash alias.
+  "glm-5.3": {
+    service: "llm", model: "glm-5-3-flash-260828", baseUrlEnv: "LLM_BASE_URL", apiKeyEnv: "LLM_API_KEY",
+    extra: { thinking: { type: "enabled" }, reasoning_effort: "low" }, jsonMode: true,
+  },
+  // The scorer's parameters for GLM-5.3: temperature 1 with high reasoning, up to 180 s per call.
+  "glm-5.3-selection": {
+    service: "llm", model: "glm-5-3-flash-260828", baseUrlEnv: "LLM_BASE_URL", apiKeyEnv: "LLM_API_KEY",
+    extra: { thinking: { type: "enabled", clear_thinking: false }, reasoning_effort: "high", top_p: 0.95 }, jsonMode: true,
+    scoreCall: { temperature: 1, maxTokens: 65_536, timeoutMs: 180_000 },
+  },
   // DeepSeek Flash reasons by default; structured tasks switch it off. deepseek-flash-think keeps it on,
   // with room in the output for the reasoning.
   "deepseek-flash": {
