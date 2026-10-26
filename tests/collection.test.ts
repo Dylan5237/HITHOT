@@ -8,9 +8,36 @@ import { config } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
 import { stopBoss } from "@aihot/backend/jobs/queue";
 import { collectSource } from "@aihot/backend/sources/collect";
+import http from "node:http";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { politeFetch, CollectionDeniedError } from "@aihot/backend/sources/polite";
 
 const T = tag();
 const X_SOURCE = `test-x-${T}`;
+
+test("collection respects robots and keeps the same site's interval across processes", async () => {
+  const starts: number[] = [];
+  let deniedHits = 0;
+  const server = http.createServer((req,res) => {
+    if(req.url==="/robots.txt") { res.end("User-agent: *\nDisallow: /blocked\n"); return; }
+    if(req.url==="/blocked") deniedHits++;
+    starts.push(performance.now()); res.end("public result");
+  });
+  await new Promise<void>(resolve=>server.listen(0,"127.0.0.2",resolve));
+  const base=`http://127.0.0.2:${(server.address() as {port:number}).port}`;
+  try {
+    const childCode = `import {politeFetch} from '@aihot/backend/sources/polite'; import {closeDb} from '@aihot/backend/db'; await politeFetch(${JSON.stringify(base+"/child")}); await closeDb();`;
+    await Promise.all([
+      politeFetch(base+"/parent"),
+      promisify(execFile)(process.execPath,["--input-type=module","-e",childCode],{cwd:process.cwd(),env:{...process.env,ALLOW_PRIVATE_NETWORK_FETCH:"true"}}),
+    ]);
+    assert.equal(starts.length,2);
+    assert.ok(starts[1]-starts[0]>=5000,`request interval ${starts[1]-starts[0]} ms`);
+    await assert.rejects(politeFetch(base+"/blocked"),CollectionDeniedError);
+    assert.equal(deniedHits,0,"robots denial must stop before an article request");
+  } finally { await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve())); }
+});
 
 // SocialData: 45 posts newer than the watermark, newest first half a day apart, 2 a page; `cursor` is the page number.
 const BASE = BigInt(Date.now()) * 1000n;

@@ -1,6 +1,7 @@
+import { collectionHttp } from "./polite.ts";
 // Web list pages: HTML with selectors, Markdown through Jina Reader, and dated changelog sections.
 import * as cheerio from "cheerio";
-import { guardedFetch, languageHeaders, requireOk } from "../lib/http-fetch.ts";
+import { languageHeaders, requireOk } from "../lib/http-fetch.ts";
 import { contentDocument } from "../lib/page-content.ts";
 import { fetchListing } from "./listing-fetch.ts";
 import { identityKeyForUrl, normalizeUrl } from "../lib/url.ts";
@@ -274,7 +275,7 @@ function fromDocusaurusChangelog(html: string, base: string, source: SourceRow):
 }
 
 async function fetchScript(url: string): Promise<string> {
-  return requireOk(await guardedFetch(url, { timeoutMs: 25_000 }), url).text();
+  return requireOk(await collectionHttp.fetch(url, { timeoutMs: 25_000 }), url).text();
 }
 
 /** A double-quoted string literal in minified script. */
@@ -380,7 +381,7 @@ export async function fetchDetail(url: string, source: SourceRow, need: DetailNe
   if ((need.date && !dateInJina) || (need.title && !titleInJina) || need.summary) {
     // The rules read a page's head and byline. A page past the size limit (a long paper with inline
     // figures) is read up to it rather than failing on every run; a body cut there is not kept.
-    const res = requireOk(await guardedFetch(url, { headers: languageHeaders(source.config.acceptLanguage), timeoutMs: 20_000, truncate: true }), "detail");
+    const res = requireOk(await collectionHttp.fetch(url, { headers: languageHeaders(source.config.acceptLanguage), timeoutMs: 20_000, truncate: true }), "detail");
     html = res.text();
     page = { document: contentDocument(html), url: res.url, whole: !res.truncated && /html/.test(res.headers.get("content-type") ?? "") };
   }

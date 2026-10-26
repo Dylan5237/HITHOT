@@ -218,7 +218,7 @@ export async function enrichDetails(candidates: CollectionCandidate[], source: S
   return reads;
 }
 
-async function store(sourceId: string, runId: number, candidates: CollectionCandidate[], backfill: string | null) {
+async function store(sourceId: string, runId: number, candidates: CollectionCandidate[], backfill: string | null, process = true) {
   let created = 0;
   let revised = 0;
   for (const c of candidates) {
@@ -243,7 +243,7 @@ async function store(sourceId: string, runId: number, candidates: CollectionCand
     if (res.created) created += 1;
     if (res.revised) revised += 1;
     // Extraction first when the source wants full text and none came with the listing, else analysis.
-    if (res.created || res.revised || res.processingNeeded) await queueProcessing(res.articleId);
+    if (process && (res.created || res.revised || res.processingNeeded)) await queueProcessing(res.articleId);
   }
   return { created, revised };
 }
@@ -278,11 +278,11 @@ async function recordFetch(db: Db, sourceId: string, runId: number, run: { found
 }
 
 /** `xSince` reads an X account again from that post, without moving its watermark back. */
-export async function collectSource(sourceId: string, opts: { force?: boolean; xSince?: string } = {}): Promise<CollectResult> {
+export async function collectSource(sourceId: string, opts: { force?: boolean; xSince?: string; process?: boolean; initialLimit?: number; externalFetch?: (source: SourceRow) => Promise<Candidate[]> } = {}): Promise<CollectResult> {
   const source = await loadSource(sourceId);
   if (!source) return { sourceId, status: "skipped", found: 0, created: 0, revised: 0, error: "missing" };
   if (!source.enabled && !opts.force) return { sourceId, status: "skipped", found: 0, created: 0, revised: 0, error: "paused" };
-  if (source.kind === "mp_account" || source.kind === "external") {
+  if (source.kind === "mp_account" || source.kind === "external" && !opts.externalFetch) {
     // WeChat accounts are reconciled by the mp job; external sources only receive reports.
     return { sourceId, status: "skipped", found: 0, created: 0, revised: 0 };
   }
@@ -312,6 +312,7 @@ export async function collectSource(sourceId: string, opts: { force?: boolean; x
       else delete nextCursor.rss;
       if (rss.notModified) detail = { notModified: true, httpStatus: 304 };
     }
+    else if (source.kind === "external") candidates = await opts.externalFetch!(source);
     else if (source.kind === "web_list") candidates = await fetchWebList(source);
     else if (source.kind === "json_list") candidates = await fetchJsonList(source);
     else {
@@ -333,7 +334,7 @@ export async function collectSource(sourceId: string, opts: { force?: boolean; x
     const { byListing, admits } = admission(source, known, firstImport);
     candidates = candidates.filter(byListing);
     // First import of a new source: bounded, and archived by source time (never "today", never pushed).
-    if (firstImport) candidates = candidates.slice(0, Number(source.config._aihot?.initialBackfillLimit ?? 30));
+    if (firstImport) candidates = candidates.slice(0, Number(opts.initialLimit ?? source.config._aihot?.initialBackfillLimit ?? 30));
     const reads = await enrichDetails(candidates, source, known, {
       budget: Number(d?.maxFetches ?? 0), admits,
       after: source.cursor?.detailRules === rules ? source.cursor?.detailAfter : undefined,
@@ -359,9 +360,9 @@ export async function collectSource(sourceId: string, opts: { force?: boolean; x
     // Kept while the listing offers them; a 304 offers no entries and keeps the last ones.
     if (found) nextCursor.detailDatedOut = datedOut;
     if (!d || !Object.keys(nextCursor.detailDatedOut ?? {}).length) delete nextCursor.detailDatedOut;
-    const stored = await store(sourceId, run!.id, candidates, firstImport ? "first-import" : null);
+    const stored = await store(sourceId, run!.id, candidates, firstImport ? "first-import" : null, opts.process !== false);
     ({ created, revised } = stored);
-    for (const id of await fillScheduledPublications(sourceId)) await queueProcessing(id);
+    if (opts.process !== false) for (const id of await fillScheduledPublications(sourceId)) await queueProcessing(id);
 
     if (firstImport) nextCursor.initializedAt = new Date().toISOString();
     nextCursor.lastOkAt = new Date().toISOString();

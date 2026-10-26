@@ -1,8 +1,9 @@
+import { collectionHttp } from "./polite.ts";
 // Source icons ("来源图标缓存"): the face a source shows next to its reports and on the hot list.
 // X accounts take the avatar on their latest post; 公众号 the account avatar on their latest article
 // page; sites the best icon their home page declares. A source with none keeps its tinted initial.
 import { sql } from "../db.ts";
-import { guardedFetch, DEFAULT_UA } from "../lib/http-fetch.ts";
+import { DEFAULT_UA } from "../lib/http-fetch.ts";
 import { produceImage } from "../media/images.ts";
 import { sourceOwnsPost } from "./account.ts";
 
@@ -31,7 +32,7 @@ async function refreshXAvatars(): Promise<number> {
 /** A page's HTML; 公众号 article pages run to several megabytes, home pages rarely past four. */
 async function page(url: string, maxBytes = 4_000_000): Promise<{ html: string; url: string } | null> {
   try {
-    const res = await guardedFetch(url, { timeoutMs: 15_000, maxBytes, headers: { "user-agent": DEFAULT_UA, accept: "text/html,*/*;q=0.8" } });
+    const res = await collectionHttp.fetch(url, { timeoutMs: 15_000, maxBytes, headers: { "user-agent": DEFAULT_UA, accept: "text/html,*/*;q=0.8" } });
     return res.status === 200 ? { html: res.text(), url: res.url } : null;
   } catch {
     return null;

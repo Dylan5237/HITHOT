@@ -3,7 +3,8 @@
 import { Readability } from "@mozilla/readability";
 import type { parseHTML } from "linkedom";
 import { sql } from "../db.ts";
-import { guardedFetch, languageHeaders } from "../lib/http-fetch.ts";
+import { languageHeaders } from "../lib/http-fetch.ts";
+import { CollectionDeniedError, collectionHttp } from "../sources/polite.ts";
 import { assertPageContent, contentDocument, UnavailablePageError } from "../lib/page-content.ts";
 import { stripTags } from "../lib/text.ts";
 import { logError } from "../lib/log-error.ts";
@@ -407,7 +408,7 @@ export function readableDocument(document: Doc, url: string, rules: PageRules = 
 export async function extractFromUrl(url: string, subject: string, rules: PageRules = {}, opts: { paidFallback?: boolean } = {}): Promise<ExtractedBody | null> {
   if (isVideoPageUrl(url)) return null;
   try {
-    const res = await guardedFetch(url, { headers: languageHeaders(rules.acceptLanguage), timeoutMs: 20_000, maxBytes: 6 * 1024 * 1024 });
+    const res = await collectionHttp.fetch(url, { headers: languageHeaders(rules.acceptLanguage), timeoutMs: 20_000, maxBytes: 6 * 1024 * 1024 });
     if (isVideoPageUrl(res.url)) return null;
     const type = res.headers.get("content-type") ?? "";
     if (res.status === 200 && /html/.test(type)) {
@@ -416,6 +417,7 @@ export async function extractFromUrl(url: string, subject: string, rules: PageRu
     }
   } catch (error) {
     // Fall through to Jina, but say why: a parser error here is ours to fix, not a missing Reader key.
+    if (error instanceof CollectionDeniedError) return null;
     console.warn(JSON.stringify({ level: "warn", msg: "direct article read failed; trying Reader", url, err: logError(error) }));
   }
   if (opts.paidFallback === false) return null;

@@ -96,6 +96,18 @@
         ],
         "_aihot": {
           "initialBackfillLimit": 10
+        },
+        "ingestNoiseFilter": {
+          "requireMarkers": [
+            "医疗器械软件",
+            "医用软件",
+            "人工智能",
+            "AI",
+            "软件医疗器械",
+            "独立软件",
+            "深度学习",
+            "机器学习"
+          ]
         }
       },
       "tier": "T1",
@@ -290,7 +302,8 @@
         "研究"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "rss-histalk",
@@ -310,7 +323,8 @@
         "海外"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "rss-healthcare-dive",
@@ -330,7 +344,8 @@
         "海外"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "rss-stat-health-tech",
@@ -350,7 +365,8 @@
         "海外"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "rss-healthcare-it-today",
@@ -370,7 +386,8 @@
         "海外"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "rss-medcity-health-tech",
@@ -411,7 +428,8 @@
         "海外"
       ],
       "site_fulltext": false,
-      "syndicate_fulltext": false
+      "syndicate_fulltext": false,
+      "enabled": false
     },
     {
       "id": "rss-leiphone",
@@ -716,6 +734,306 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "cninfo-winning",
+      "name": "卫宁健康 巨潮公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "cninfo-neusoft",
+      "name": "东软集团 巨潮公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "cninfo-bsoft",
+      "name": "创业慧康 巨潮公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "cninfo-dhcc",
+      "name": "东华软件 巨潮公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "cninfo-goodwill",
+      "name": "嘉和美康 巨潮公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "web-winning-news",
+      "name": "卫宁健康 官网新闻",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "web-bsoft-news",
+      "name": "创业慧康 官网新闻",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-dhcc-news",
+      "name": "东华软件 官网新闻",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-goodwill-news",
+      "name": "嘉和美康 官网新闻",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-neusoft-news",
+      "name": "东软集团 官网新闻",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "ccgp-results",
+      "name": "中国政府采购网 中标成交结果",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "ggzy-results",
+      "name": "全国公共资源交易平台 中标成交结果",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "official-emr-ratings",
+      "name": "官方电子病历评级通过名单",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "名单"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "official-connectivity-ratings",
+      "name": "官方互联互通测评通过名单",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "名单"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "hkex-yidu",
+      "name": "医渡科技 港交所公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "hkex-iflytek",
+      "name": "讯飞医疗 港交所公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "公告"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-cn-healthcare",
+      "name": "健康界",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-iyiou-health",
+      "name": "亿欧大健康",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "nmg-results",
+      "name": "内蒙古政府采购网 中标成交结果",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "hlj-results",
+      "name": "黑龙江政府采购网 中标成交结果",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [
+        "行业"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
     }
   ]
 }

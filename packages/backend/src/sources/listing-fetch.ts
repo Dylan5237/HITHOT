@@ -1,6 +1,7 @@
 // Free listing reads: one retry for transient transport/upstream failures within the original deadline.
 import { setTimeout } from "node:timers/promises";
-import { guardedFetch, type GuardedFetchOptions, type GuardedResponse } from "../lib/http-fetch.ts";
+import type { GuardedFetchOptions, GuardedResponse } from "../lib/http-fetch.ts";
+import { collectionHttp } from "./polite.ts";
 
 const RETRY_DELAY_MS = 1000;
 const TRANSIENT_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT", "EAI_AGAIN", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
@@ -30,7 +31,7 @@ export async function fetchListing(input: string, opts: GuardedFetchOptions = {}
     const canRetry = () => repeatable && attempt === 0 && deadline - Date.now() > RETRY_DELAY_MS;
     try {
       // Listing addresses come from the source configuration, so a listed private feed host may serve them.
-      const res = await guardedFetch(input, { ...opts, privateFeedHost: true, timeoutMs: Math.max(1, deadline - Date.now()) });
+      const res = await collectionHttp.fetch(input, { ...opts, privateFeedHost: true, timeoutMs: Math.max(1, deadline - Date.now()) });
       if (!canRetry() || !transientResponse(input, res)) return res;
     } catch (error) {
       if (!canRetry() || !transientTransport(error)) throw error;

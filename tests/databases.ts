@@ -68,6 +68,7 @@ if (process.env.NODE_TEST_CONTEXT && isMainThread) {
     await onServer((db) => db`CREATE DATABASE ${db(copy)} TEMPLATE ${db(name)}`);
     process.env.DATABASE_URL = urlOf(copy);
   }
+  await import("./collection-http.ts");
   const scratch = mkdtempSync(path.join(tmpdir(), scratchPrefix(process.ppid)));
   for (const dir of ["data", "tmp"]) mkdirSync(path.join(scratch, dir));
   process.env.AIHOT_DATA_DIR = path.join(scratch, "data");

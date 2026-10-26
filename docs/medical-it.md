@@ -1,6 +1,8 @@
 # HITHOT：医疗信息化热点站的定制说明
 
-这份仓库是从 AIHOT 开源框架改出来的**医疗信息化**行业热点站（暂定站名 HITHOT）。引擎代码没有改动，改的都在 `site/` 和 `industry/` 里。
+这份仓库是医疗信息化行业热点站 HITHOT。站点配置在 `site/` 和 `industry/`，专用采集在 `modules/medical-sources/`；v3 另有评分字段、公共读取和采集 HTTP 层的配套改造，详见 [内容分类与评分](hithot-content.md)。
+
+2026-10-26 的 v3 信源状态以 `industry/sources.json` 和 `industry/medical-sources.ts` 为准：HIStalk、HIT Consultant、Healthcare IT Today、Healthcare Dive、STAT Health Tech、JMIR Medical Informatics、HL7 Europe 已停用，保留历史数据。下文的旧试抓记录只说明当时可达性，不表示这些源仍启用。新增源的实际回填和未完成项见本次验收包；公开接口可访问不等于接入已经通过验收。
 
 ## 改了什么
 

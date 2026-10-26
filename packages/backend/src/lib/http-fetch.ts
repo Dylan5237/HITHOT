@@ -64,6 +64,8 @@ function dispatcherFor(viaProxy: boolean, privateHost: boolean): Dispatcher | un
 }
 
 export interface GuardedFetchOptions {
+  /** Collection checks robots and rate limits again before following each redirect. */
+  followRedirects?: boolean;
   method?: string;
   headers?: Record<string, string>;
   body?: string;
@@ -145,7 +147,7 @@ export async function guardedFetch(input: string, opts: GuardedFetchOptions = {}
       dispatcher: dispatcherFor(proxied(url, route, privateHosts), privateHosts.includes(hostOf(url))),
       signal,
     });
-    if ([301, 302, 303, 307, 308].includes(res.status) && res.headers.get("location")) {
+    if (opts.followRedirects !== false && [301, 302, 303, 307, 308].includes(res.status) && res.headers.get("location")) {
       // Release the connection even when the next URL is refused or the redirect limit is reached.
       await res.body?.cancel();
       if (hop >= maxRedirects) throw new Error("Too many redirects");
