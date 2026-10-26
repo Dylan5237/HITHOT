@@ -322,6 +322,14 @@ export async function composeDueReports(now = new Date(), limit = 8): Promise<{ 
       if (k.kind !== "daily" && (!firstDaily || k.end(key) < firstDaily)) continue;
       if (shutdownSignal.signal.aborted || generated.length >= limit) break kinds;
       try {
+        if (k.kind === "daily" && key < k.due) {
+          const end = beijingAt(key, EDITION_TIMES.daily);
+          const edition = await dailyEdition(key, new Date(end.getTime() - 86400000), end);
+          if (edition.entries.length === 0 && edition.stats.judgedReports === 0) {
+            console.info(JSON.stringify({ level: "info", msg: "report gap kept", report: `daily:${key}`, reason: "No judged public content in the closed window" }));
+            continue;
+          }
+        }
         if (await k.compose(key) !== null) generated.push(`${k.kind}:${key}`);
       } catch (error) {
         // An issue interrupted by the stop is not a failure: it is written after the restart.
