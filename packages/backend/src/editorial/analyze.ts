@@ -228,7 +228,7 @@ export function waitsForPage(a: AnalyzeInputArticle): boolean {
   return a.bodyStatus === "pending" && !a.bodyText && !a.xPost && pageFetchable(a.url, a.source.kind);
 }
 
-type StepOpts = { attemptTag?: string; scoreModel?: string };
+type StepOpts = { attemptTag?: string; scoreModel?: string; scoreBlocked?: boolean };
 type ReceiptObserver = (receiptId: number) => void;
 
 /** A stopping worker finishes the stage it is in, never starts the next. */
@@ -490,7 +490,9 @@ export async function runAnalysis(a: AnalyzeInputArticle, opts: StepOpts = {}): 
   // Missing article text waits for a later revision, before any paid step; displayable original posts keep their judgement.
   if (awaitsMaterial(a)) return { prefilter: null, scores: null, writing: null, structure: null };
   const prefilter = await runSelectionPrefilter(a, opts);
-  if (prefilter.label === "BLOCK") return { prefilter, scores: null, writing: null, structure: null };
+  if (prefilter.label === "BLOCK") return {
+    prefilter, scores: opts.scoreBlocked ? await runSelectionScores(a, opts) : null, writing: null, structure: null,
+  };
   const original = originalPostCopy(a.xPost, a.url);
   // The structure step needs nothing from the scores: it runs beside them.
   const structure = runStructure(a, opts).then((value) => ({ value }), (error: unknown) => ({ error }));

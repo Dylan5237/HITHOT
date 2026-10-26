@@ -6,7 +6,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { config } from "../config.ts";
-import { guardedFetch, type GuardedResponse } from "../lib/http-fetch.ts";
+import type { GuardedResponse } from "../lib/http-fetch.ts";
+import { collectionHttp } from "../sources/collection-http.ts";
 import { IMAGE_WIDTHS } from "./renditions.ts";
 import { recordUpstream, upstreamAllowed } from "./upstream.ts";
 
@@ -82,7 +83,7 @@ function original(url: string): Promise<GuardedResponse> {
 async function fetchOriginal(url: string): Promise<GuardedResponse> {
   const allowed = upstreamAllowed();
   if (!allowed.ok) throw new ImageBudgetExceeded(allowed.reason);
-  const res = await guardedFetch(url, {
+  const res = await collectionHttp.fetch(url, {
     timeoutMs: 20_000, maxBytes: 15 * 1024 * 1024, headers: { accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
   });
   recordUpstream(res.body.length);

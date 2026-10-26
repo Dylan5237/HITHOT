@@ -43,6 +43,7 @@ const scoreAnswers: Record<string, number[]> = {
   CLEAR: [T1 + 3, T1 - 1], RESCUE: [FLOOR + 1, FLOOR], LOW: [Math.min(FLOOR, T1) - 1, Math.min(FLOOR, T1) - 2], THIN: [T1, T1], SENSITIVE: [T1, T1], 推文: [Math.min(FLOOR, T1) - 1, Math.min(FLOOR, T1) - 2],
   BARE: [FLOOR - 2, FLOOR - 4], VAGUE: [T1, T1 + 2], WORDY: [T1, T1], REFUSAL: [T1, T1], RENUMBER: [T1, T1], UNMENDED: [T1, T1],
   RESELECT: [LOWERED + 1, LOWERED], NEGATIVE: [T1, T1],
+  OFFTOPIC: [T1, T1 + 1],
 };
 
 const WORDY = ["WORDY", "REFUSAL", "RENUMBER", "UNMENDED"];
@@ -352,6 +353,19 @@ test("the prefilter's BLOCK stops everything; UNKNOWN with material goes on like
   const bare = await analyzeArticle(await article("BARE", { bodyText: null, excerpt: null, bodyStatus: "none" }));
   assert.deepEqual([bare!.output!.relevance, bare!.output!.selected, bare!.output!.score], ["unknown", false, null]);
   assert.deepEqual(calls("BARE"), []);
+});
+
+test("maintenance can score a blocked item without writing copy or overriding the relevance gate", async () => {
+  const id = await article("OFFTOPIC", { url: `https://example.com/maintenance-block-${T}` });
+  const before = calls("OFFTOPIC").length;
+  const result = await analyzeArticle(id, { scoreBlocked: true });
+  assert.deepEqual(calls("OFFTOPIC").slice(before), ["prefilter", "score", "score"]);
+  assert.equal(result!.output!.relevance, "block");
+  assert.equal(result!.output!.selected, false);
+  assert.equal(result!.output!.board, "政策标准");
+  assert.equal(result!.output!.scores?.length, 2);
+  assert.equal(result!.output!.titleZh, "");
+  assert.equal((await row(id)).receipt_ids.length, 3);
 });
 
 test("a feed summary alone: the article page is fetched first, then the whole article is judged", async () => {
