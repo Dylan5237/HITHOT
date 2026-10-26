@@ -76,6 +76,26 @@ test("missing and invalid identity answers cannot silently assert unrelated", ()
   assert.throws(() => verdictsByFact([{ id: "C1", relation: "UNRELATED", confidence: 1 }, { id: "C1", relation: "UNRELATED", confidence: 1 }], cands), /candidate|候选/i);
 });
 
+test("archive maintenance resolves a historical report without turning it into live heat", async () => {
+  const id = await report("archive-maintenance");
+  const at = new Date(Date.now() - 30 * 86400_000);
+  await sql`UPDATE articles SET published_at=${at}, timeline_at=${at}, backfill=true, backfill_reason='test history' WHERE id=${id}`;
+  const before = provider.hits();
+  assert.equal((await groupArticle(id)).verdict, "historical");
+  assert.equal(provider.hits(), before);
+  assert.equal((await sql`SELECT 1 FROM fact_articles WHERE article_id=${id}`).length, 0);
+
+  const grouped = await groupArticle(id, { includeHistorical: true });
+  assert.ok(grouped.factId);
+  assert.ok(grouped.storyId);
+  assert.equal((await sql`SELECT 1 FROM story_signals WHERE article_id=${id}`).length, 0);
+  const [a] = await sql`SELECT backfill,published_at,timeline_at,grouping_status FROM articles WHERE id=${id}`;
+  assert.equal(a!.backfill, true);
+  assert.equal(a!.published_at.getTime(), at.getTime());
+  assert.equal(a!.timeline_at.getTime(), at.getTime());
+  assert.equal(a!.grouping_status, "complete");
+});
+
 for (const composite of [false, true]) test(`a ${composite ? "roundup" : "single report"} with an incomplete answer stays unresolved and can recover`, async () => {
   const id = await report(composite ? "roundup" : "incomplete", composite);
   response = "missing";

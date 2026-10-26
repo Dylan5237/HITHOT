@@ -14,7 +14,8 @@
 // them list each other as related (linkRelatedStories). A story a regrouped report leaves without
 // reports merges into where it went, so its address keeps working. Discussion posts that found no
 // story get another look when a report founds a fact close to them (rematchSignals); history
-// (isHistorical) founds no event. Runs serially (queue concurrency 1).
+// (isHistorical) founds no event unless an explicit archive repair requests identity only.
+// Runs serially (queue concurrency 1).
 import { modelFor, modelRoute } from "../editorial/models.ts";
 import { beijingDate, beijingMidnight } from "@aihot/contracts/time";
 import { sql, type Db, type Tx } from "../db.ts";
@@ -229,6 +230,8 @@ export interface GroupResult {
 export interface GroupOptions {
   /** Discussion evidence only (hot_signal sources): attach to a story, never create one. */
   signalOnly?: boolean;
+  /** Maintenance of archived reports: resolve identity without adding heat or rematching live discussion. */
+  includeHistorical?: boolean;
 }
 
 export async function groupArticle(articleId: string, opts: GroupOptions = {}): Promise<GroupResult> {
@@ -289,12 +292,13 @@ async function decide(articleId: string, opts: GroupOptions, revision: number, r
   const composite = an?.composite === true;
   const unsupported = an?.output?.scope === "unknown" && !an.output.fact;
   const historical = isHistorical(a);
-  const left = composite || unsupported || historical
+  const skipHistorical = historical && !opts.includeHistorical;
+  const left = composite || unsupported || skipHistorical
     ? await sql.begin(async (tx) => { await lockCurrentRevision(tx, articleId, a.revision); return resetAutomatic(tx, articleId); })
     : [];
 
   // History founds no event and adds no heat (isHistorical); a regroup takes it out of any it joined.
-  if (historical) {
+  if (skipHistorical) {
     await markGrouped(articleId, a.revision, { addsValue: true, reason: "历史资料按原文时间归档" });
     return { verdict: "historical" };
   }
@@ -459,7 +463,7 @@ async function decide(articleId: string, opts: GroupOptions, revision: number, r
     const role = a.first_party && Number(hasPrimary?.n ?? 0) === 0 ? "primary" : "report";
     const evidence = [frame?.evidence, ...(Array.isArray(frame?.conditions) ? frame.conditions.map((c: { quote?: string }) => c.quote) : [])].filter((x): x is string => typeof x === "string" && !!x).join("\n") || null;
     await tx`INSERT INTO fact_articles (fact_id, article_id, role, evidence, created_at) VALUES (${fact}, ${articleId}, ${role}, ${evidence}, ${observedAt}) ON CONFLICT (fact_id, article_id) DO NOTHING`;
-    await recordSignal(tx, story, articleId, source, "editorial", observedAt);
+    if (!historical) await recordSignal(tx, story, articleId, source, "editorial", observedAt);
     await recordDecision(tx, articleId, fact, story, verdict, decisionCandidates, receipts[0] ?? null);
     await markGrouped(articleId, a.revision, selection, tx);
     for (const id of receipts) await completeReceipt(tx, id);
@@ -484,7 +488,7 @@ async function decide(articleId: string, opts: GroupOptions, revision: number, r
   if (redirected.length) result.redirected = redirected;
   // Discussion posts that reply to or quote this post and came first now have its story, whichever
   // fact it joined (the posts waiting on an original wake when the original arrives).
-  if (a.x_post?.tweetId) {
+  if (!historical && a.x_post?.tweetId) {
     try {
       result.reclaimed = await reclaimWaiting(a.x_post.tweetId);
     } catch (error) {
@@ -492,7 +496,7 @@ async function decide(articleId: string, opts: GroupOptions, revision: number, r
     }
   }
   // A new fact may be what discussion posts of the last hours were about before any report came.
-  if (verdict === "new-story" || verdict === "new-fact-in-story") {
+  if (!historical && (verdict === "new-story" || verdict === "new-fact-in-story")) {
     try {
       result.rematched = await rematchSignals(articleId, reportText(title, an.summary_zh));
     } catch (error) {
