@@ -33,7 +33,7 @@ const provider = await stub(async (_hit, request) => {
   if (step === "structure" && count === 1) { active.structureAsked.open(); await active.structureAnswer.promise; }
   if (step === "understand" && active.writingAnswer) { active.writingAsked!.open(); await active.writingAnswer.promise; }
   const content = step === "prefilter" ? { label: "PASS", reason: "AI model release" }
-    : step === "score" ? { attentionScore: SELECTING_SCORE }
+    : step === "score" ? { score: SELECTING_SCORE, board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" }
       : step === "structure" ? { category: "policy", tags: ["政策发布"], subjects: [], fact: { title: "新政策发布" } }
         : { itemType: "policy_release", authorRole: "principal", tags: ["政策发布"], editorialJudgment: "模型有明确的能力提升", titleZh: `新政策发布 ${T}`, summaryZh: "政策发布并提供了评测和价格。" };
   return { id: `stub-${active.calls.length}`, choices: [{ message: { content: JSON.stringify(content) } }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } };

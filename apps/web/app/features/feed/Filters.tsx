@@ -1,3 +1,4 @@
+import { BOARDS, PERSPECTIVES } from "@aihot/industry/content";
 // Feed filters: the channel and category choice (a row of tabs on desktop, a sheet behind the bar's filter
 // button on phones), the phone bar of 精选 and 全部, and search.
 import { useEffect, useRef, useState } from "react";
@@ -209,4 +210,17 @@ export function SearchField({ defaultValue = "", keep = {} }: { defaultValue?: s
       )}
     </Form>
   );
+}
+
+/** Independent board and focus filters on both phone and desktop home pages. */
+export function ContentFilters() {
+  const [params] = useSearchParams();
+  return <div className="mb-5 space-y-3">
+    <nav aria-label="关注视角" className="flex flex-wrap gap-2">
+      {["全部", ...PERSPECTIVES].map((p) => <Link key={p} to={hrefWith("/", params, { perspective: p === "全部" ? null : p })} aria-current={(params.get("perspective") ?? "全部") === p ? "page" : undefined} className="rounded-full border border-line-soft px-4 py-2 text-sm aria-[current=page]:bg-accent aria-[current=page]:text-white">{p}</Link>)}
+    </nav>
+    <nav aria-label="板块" className="flex flex-wrap gap-2 text-[13px] text-ink-3">
+      {["全部板块", ...BOARDS].map((b) => <Link key={b} to={hrefWith("/", params, { board: b === "全部板块" ? null : b })} aria-current={(params.get("board") ?? "全部板块") === b ? "page" : undefined} className="rounded-control px-2 py-1 aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent">{b}</Link>)}
+    </nav>
+  </div>;
 }

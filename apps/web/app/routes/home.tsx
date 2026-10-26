@@ -8,7 +8,7 @@ import { inNav } from "../components/shell/nav";
 import type { Screen } from "../components/shell/screens";
 import { Timeline } from "../features/feed/Timeline";
 import { HotTopics } from "../features/feed/HotTopics";
-import { ActiveFilters, CategoryTabs, FeedBar, SearchField } from "../features/feed/Filters";
+import { ActiveFilters, ContentFilters, FeedBar, SearchField } from "../features/feed/Filters";
 
 export const handle: Screen = { tab: "featured", name: "精选" };
 export { pageHeaders as headers } from "../lib/api.server";
@@ -42,10 +42,12 @@ export default function Home() {
       <div className="hidden lg:block">
         <h1 className="text-[24px] font-semibold leading-[1.3] text-ink">{title}</h1>
         <div className="mb-5 mt-4 flex items-center justify-between gap-4">
-          <CategoryTabs base="/" category={filters.category} channel={filters.channel} layoutId="home-cat-desk" className="min-w-0" />
+          <span className="text-sm text-ink-3">关注视角与板块</span>
           <SearchField keep={{ category: filters.category }} />
         </div>
       </div>
+
+      <ContentFilters />
 
       {data.hot && inNav("/hot") && <HotTopics entries={data.hot} />}
 

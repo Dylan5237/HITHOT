@@ -25,7 +25,7 @@ const provider = await stub((_hit, req) => {
   seen.push({ model: (JSON.parse(req.body) as { model: string }).model, step });
   const content =
     step === "prefilter" ? { label: "PASS", reason: "测试" }
-    : step === "score" ? { attentionScore: SELECTING_SCORE }
+    : step === "score" ? { score: SELECTING_SCORE, board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" }
     : step === "understand" ? { itemType: "product_launch", authorRole: "principal", tags: ["产品更新"], editorialJudgment: "理由", titleZh: "一个模型的标题", summaryZh: "一个模型写的摘要。第二句。" }
     : step === "structure" ? { category: "products", tags: ["产品更新"], subjects: [], fact: null }
     : "title_zh: 标题\nsummary_zh: 摘要。";

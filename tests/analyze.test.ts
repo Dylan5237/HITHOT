@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { upsertMaterial } from "@aihot/backend/content/materials";
-import { analyzeArticle, buildMaterial, loadAnalyzeInput, normalizeStructure, reselectArticle, StructureSchema, tierThreshold, UNDERSTAND_FLOOR } from "@aihot/backend/editorial/analyze";
+import { analyzeArticle, buildMaterial, loadAnalyzeInput, normalizeStructure, reselectArticle, ScoreSchema, StructureSchema, tierThreshold, UNDERSTAND_FLOOR } from "@aihot/backend/editorial/analyze";
 import { queueProcessing, registerContentJobs } from "@aihot/backend/jobs/content";
 import { getBoss, QUEUES, stopBoss } from "@aihot/backend/jobs/queue";
 import { compactAnswerFirstSummary, enforceIdentity, MAX_BODY_CHARS, parseTranslateOutput } from "@aihot/backend/editorial/writing";
@@ -20,6 +20,15 @@ import { SELECTION } from "@aihot/industry/selection";
 const T = tag();
 const SOURCE = `test-analyze-${T}`;
 const X_SOURCE = `test-analyze-x-${T}`;
+
+test("v3 scoring requires a valid board, ordered unique perspectives and a recommendation", () => {
+  const good = { score: 86, board: "政策标准", perspectives: ["产品技术", "市场经营"], reason: "接口改造将影响研发排期" };
+  assert.equal(ScoreSchema.parse(good).attentionScore, 86);
+  for (const invalid of [{ ...good, board: "其他" }, { ...good, perspectives: ["产品技术", "产品技术"] }, { ...good, reason: "" }, { ...good, score: 101 }])
+    assert.equal(ScoreSchema.safeParse(invalid).success, false);
+  assert.equal(tierThreshold("T1"), tierThreshold("T1_5"));
+  assert.equal(tierThreshold("T1"), tierThreshold("T2"));
+});
 
 interface Req { step: AnalysisStep; marker: string; user: string }
 const requests: Req[] = [];
@@ -48,7 +57,7 @@ const provider = await stub((_hit, req) => {
   requests.push({ step, marker, user });
   const answer = (content: unknown) => ({ id: `stub-${requests.length}`, model: "stub", choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) } }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } });
   if (step === "prefilter") return answer({ label: marker === "OFFTOPIC" || marker === "BARE" ? "BLOCK" : marker === "VAGUE" ? "UNKNOWN" : "PASS", reason: "测试" });
-  if (step === "score") return answer({ attentionScore: scoreAnswers[marker]!.shift() });
+  if (step === "score") return answer({ score: scoreAnswers[marker]!.shift(), board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" });
   // Copy with a word a site keeps from readers (added to the pack's list below), and its mended form: whole (WORDY),
   // refused by the provider, with a number changed, or with as many such words as before.
   if (step === "understand" && WORDY.includes(marker)) return answer({ itemType: ITEM_TYPES[0], authorRole: "principal", tags: [], editorialJudgment: `理由里有禁用词 ${marker}`, titleZh: `标题里有禁用词 ${marker}`, summaryZh: `${marker} 的摘要。第二句补充 3 个数字。` });
@@ -97,7 +106,7 @@ test("a selected item: prefilter, two scores, the content understanding and the 
   assert.deepEqual([res!.output!.selected, res!.output!.score], [true, T1 + 1], `${T1 + 3} + ${T1 - 1} >= 2 × ${T1}; the mean is shown`);
   assert.deepEqual(calls("CLEAR").sort(), ["prefilter", "score", "score", "structure", "understand"]);
   const r = await row(id);
-  assert.deepEqual([r.title_zh, r.reason_zh, r.category, r.receipt_ids.length], ["理解标题 CLEAR", "理由 CLEAR", "policy", 5]);
+  assert.deepEqual([r.title_zh, r.reason_zh, r.category, r.receipt_ids.length], ["理解标题 CLEAR", "系统改造需求影响产品规划", "policy", 5]);
   // Failure case: the writer's independent labels contradict the structural category.
   assert.deepEqual(r.tags, ["政策发布", "电子病历", "Microsoft"], "category and tags come from the same structural judgement, plus the verified subject tag");
   assert.deepEqual(r.subjects, ["microsoft"]);
@@ -116,7 +125,7 @@ test("a word the site keeps from readers goes back once to be changed; copy with
     await analyzeArticle(id);
     assert.equal(calls("WORDY").filter((s) => s === "wording").length, 1);
     const r = await row(id);
-    assert.deepEqual([r.title_zh, r.reason_zh], ["标题里换了说法 WORDY", "理由里换了说法 WORDY"], "the mended copy is stored");
+    assert.deepEqual([r.title_zh, r.reason_zh], ["标题里换了说法 WORDY", "系统改造需求影响产品规划"], "the title is mended and the scoring reason is authoritative");
     const sent = requests.find((q) => q.marker === "WORDY" && q.step === "wording")!;
     assert.ok(sent.user.includes("标题用了“禁用词”") && sent.user.includes("推荐理由用了“禁用词”"), "each use named");
     assert.ok(!requests.some((q) => q.step === "wording" && q.marker !== "WORDY"), "the other items' copy uses none");
@@ -132,7 +141,7 @@ test("the first copy stands when the provider refuses the mend, the mend changes
       const id = await article(marker);
       await analyzeArticle(id);
       const r = await row(id);
-      assert.deepEqual([r.title_zh, r.reason_zh], [`标题里有禁用词 ${marker}`, `理由里有禁用词 ${marker}`], `${marker}: the first copy is stored`);
+      assert.deepEqual([r.title_zh, r.reason_zh], [`标题里有禁用词 ${marker}`, "系统改造需求影响产品规划"], `${marker}: the title keeps the first copy and the scoring reason is authoritative`);
       assert.equal(calls(marker).filter((s) => s === "wording").length, 1, `${marker}: mended once`);
       const [receipt] = await sql<{ status: string }[]>`SELECT status FROM receipts WHERE purpose = 'mend_wording' AND subject LIKE ${`article:${id}@%`}`;
       assert.equal(receipt!.status, marker === "REFUSAL" ? "failed" : "completed", `${marker}: the mend's receipt`);
@@ -178,10 +187,10 @@ test("structure retains grounded conditions, rejects invented or unseen quotes, 
 
 test("a near-selected item is written like a selected one; below the floor it is translated", async () => {
   const near = await analyzeArticle(await article("RESCUE"));
-  assert.deepEqual([near!.output!.selected, near!.output!.reasonZh], [2 * FLOOR + 1 >= 2 * T1, "理由 RESCUE"], `${FLOOR + 1} + ${FLOOR} > 2 × ${FLOOR}`);
+  assert.deepEqual([near!.output!.selected, near!.output!.reasonZh], [2 * FLOOR + 1 >= 2 * T1, "系统改造需求影响产品规划"], `${FLOOR + 1} + ${FLOOR} > 2 × ${FLOOR}`);
   const lowId = await article("LOW");
   const low = await analyzeArticle(lowId);
-  assert.deepEqual([low!.output!.selected, low!.output!.titleZh, low!.output!.reasonZh], [false, "翻译标题 LOW", null]);
+  assert.deepEqual([low!.output!.selected, low!.output!.titleZh, low!.output!.reasonZh], [false, "翻译标题 LOW", "系统改造需求影响产品规划"]);
   assert.deepEqual(calls("LOW").sort(), ["prefilter", "score", "score", "structure", "summarize"]);
   assert.deepEqual((await row(lowId)).tags, ["政策发布", "电子病历", "Microsoft"], "structure tags");
 });

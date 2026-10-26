@@ -14,7 +14,7 @@ const provider = await stub((_hit, request) => {
   const step = analysisStep(request.body);
   steps.push(step);
   const output = step === "prefilter" ? { label, reason: "fixture" }
-    : step === "score" ? { attentionScore: SELECTING_SCORE }
+    : step === "score" ? { score: SELECTING_SCORE, board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" }
     : step === "structure" ? { scope: "unknown", category: "model", tags: [], subjects: [], fact: null }
     : { itemType: "policy_release", authorRole: "principal", titleZh: "政策发布", summaryZh: "来源确认政策发布。", bodyZh: "来源确认政策发布。", tags: [], editorialJudgment: "fixture" };
   return { choices: [{ message: { content: JSON.stringify(output) } }] };

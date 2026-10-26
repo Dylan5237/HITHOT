@@ -15,6 +15,7 @@ import { z } from "zod";
 import { CATEGORY_KEYS } from "@aihot/contracts/taxonomy";
 import { CATEGORIES } from "@aihot/industry/taxonomy";
 import { SELECTION } from "@aihot/industry/selection";
+import { BOARDS, PERSPECTIVES } from "@aihot/industry/content";
 import { ITEM_COPY } from "@aihot/site";
 import { sql } from "../db.ts";
 import { chatJson, extractJson, MODELS, type ContentPart } from "../providers/llm.ts";
@@ -72,7 +73,13 @@ const scoreCall = (model: string) => MODELS[model]?.scoreCall ?? { temperature: 
 /** The score prompt: the industry's taste (industry/prompts/selection-score.md). */
 export const SCORE_SYSTEM = promptText("selection-score");
 
-export const ScoreSchema = z.object({ attentionScore: z.coerce.number().int().min(0).max(100) });
+export const ScoreSchema = z.object({
+  score: z.coerce.number().int().min(0).max(100),
+  board: z.enum(BOARDS),
+  perspectives: z.array(z.enum(PERSPECTIVES)).max(2).refine((v) => new Set(v).size === v.length, "duplicate perspectives"),
+  reason: z.string().trim().min(1).max(160),
+}).transform(({ score, ...classification }) => ({ attentionScore: score, ...classification }));
+type ScoreClassification = Pick<z.infer<typeof ScoreSchema>, "board" | "perspectives" | "reason">;
 
 const SCORE_TIME = new Intl.DateTimeFormat("sv-SE", {
   timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
@@ -99,7 +106,7 @@ export function buildScoreInput(a: AnalyzeInputArticle): string {
   if (!body) body = a.title;
   const at = a.publishedAt;
   return [
-    "请按系统规则评估以下单篇材料所代表的事件。只输出 attentionScore。",
+    "请按系统规则评估以下单篇材料所代表的事件。只输出 score、board、perspectives、reason（attentionScore 为内部评分名称）。",
     `【发布时间（北京时间）】\n${at ? a.publicationTime === undefined || a.publicationTime?.includes("T") ? scoreInputTime(at) : describePublicationTime(at, a.publicationTime) : "未知（收录时间不代表发布时间）"}`,
     `【标题】\n${a.title.trim()}`,
     `【完整正文】\n${body.length > MAX_BODY_CHARS ? body.slice(0, MAX_BODY_CHARS) : body}`,
@@ -197,7 +204,7 @@ export interface AnalysisRun {
    * The independent score calls and the tier threshold they are held against; absent when the material
    * is not scored. `refused`: the model's content filter declined it, so it is not selected.
    */
-  scores: { model: string; threshold: number; values: number[]; receiptIds: number[]; reused: boolean; refused?: boolean } | null;
+  scores: { model: string; threshold: number; values: number[]; classifications?: ScoreClassification[]; receiptIds: number[]; reused: boolean; refused?: boolean } | null;
   /** The reader-facing copy: `understand` (selected, near-selected), `summarize`, `verbatim` (a Chinese short post), `none`. */
   writing: {
     kind: "understand" | "summarize" | "verbatim" | "none";
@@ -277,6 +284,7 @@ async function runScores(
   const call = scoreCall(model);
   const input = buildScoreInput(a);
   const values: number[] = [];
+  const classifications: ScoreClassification[] = [];
   const receiptIds: number[] = [];
   let reused = true;
   // One after the other: the second call reuses the provider's cached prompt.
@@ -291,6 +299,7 @@ async function runScores(
       });
       onReceipt?.(res.receiptId);
       values.push(res.data.attentionScore);
+      classifications.push({ board: res.data.board, perspectives: res.data.perspectives, reason: res.data.reason });
       receiptIds.push(res.receiptId);
       reused &&= res.reused;
     } catch (error) {
@@ -301,7 +310,7 @@ async function runScores(
       throw error;
     }
   }
-  return { model, threshold, values, receiptIds, reused };
+  return { model, threshold, values, classifications, receiptIds, reused };
 }
 
 /** The production score step; its threshold stays case-specific even when an evaluator shares model output. */
@@ -512,6 +521,7 @@ export function normalizeAnalysis(run: AnalysisRun) {
   const values = run.scores && !run.scores.refused ? run.scores.values : null;
   const score = shownScore(run.scores);
   const threshold = run.scores?.threshold ?? null;
+  const classification = run.scores?.classifications?.[run.scores.values[1]! > run.scores.values[0]! ? 1 : 0];
   const selected = relevance === "pass" && scoresSelect(run.scores);
   const subjects = run.structure?.subjects ?? [];
   const tags = [...(run.structure?.tags ?? [])];
@@ -527,12 +537,14 @@ export function normalizeAnalysis(run: AnalysisRun) {
     scoreModel: run.scores?.model ?? null,
     scoreRefused: run.scores?.refused ?? false,
     threshold,
+    board: classification?.board ?? null,
+    perspectives: classification?.perspectives ?? [],
     category: run.structure?.category ?? null,
     tags,
     subjects,
     titleZh,
     summaryZh,
-    reasonZh: run.writing?.reasonZh ?? null,
+    reasonZh: classification?.reason ?? run.writing?.reasonZh ?? null,
     scope: run.structure?.scope ?? "unknown",
     fact: run.structure?.fact ?? null,
   };
@@ -569,17 +581,17 @@ export async function analyzeArticle(articleId: string, opts: StepOpts = {}): Pr
     scores: out.scores, scoreModel: out.scoreModel, threshold: out.threshold, ...(out.scoreRefused ? { scoreRefused: true } : {}),
     ...(w ? { writer: w.kind, writerModel: w.model, itemType: w.itemType ?? null, authorRole: w.authorRole ?? null } : {}),
     ...(w?.identityGuard?.outcome === "fallback" ? { identityGuard: w.identityGuard } : {}),
-    scope: out.scope, fact: out.fact,
+    scope: out.scope, fact: out.fact, board: out.board, perspectives: out.perspectives,
   };
   const committed = await sql.begin(async (tx) => {
     const [current] = await tx<{ revision: number }[]>`SELECT revision FROM articles WHERE id = ${articleId} FOR UPDATE`;
     const stale = !current || current.revision !== input.revision;
     const [row] = await tx<{ id: number }[]>`
       INSERT INTO analyses (article_id, input_revision, origin, model, prompt_version, receipt_ids, relevance, category, tags,
-        subjects, title_zh, summary_zh, reason_zh, score, selected, output)
+        subjects, title_zh, summary_zh, reason_zh, score, selected, board, perspectives, output)
       VALUES (${articleId}, ${input.revision}, 'model', ${w?.model ?? run.prefilter?.model ?? null}, ${ANALYZE_PROMPT_VERSION}, ${receiptIds},
         ${out.relevance}, ${out.category}, ${out.tags}, ${out.subjects}, ${out.titleZh}, ${out.summaryZh}, ${out.reasonZh},
-        ${out.score}, ${out.selected}, ${tx.json(detail as never)})
+        ${out.score}, ${out.selected}, ${out.board}, ${out.perspectives}, ${tx.json(detail as never)})
       RETURNING id`;
     for (const id of receiptIds) await completeReceipt(tx, id);
     if (!stale) {
@@ -616,10 +628,11 @@ export async function reselectArticle(articleId: string): Promise<{ analysisId: 
       id: number; input_revision: number; origin: string; model: string | null; prompt_version: string | null;
       receipt_ids: number[]; relevance: string | null; category: string | null; tags: string[]; subjects: string[];
       title_zh: string | null; summary_zh: string | null; reason_zh: string | null;
+      board: string | null; perspectives: string[];
       score: string | null; output: Record<string, unknown> | null;
     }[]>`
       SELECT id, input_revision, origin, model, prompt_version, receipt_ids, relevance, category, tags, subjects,
-             title_zh, summary_zh, reason_zh, score, output
+             title_zh, summary_zh, reason_zh, board, perspectives, score, output
       FROM analyses WHERE article_id = ${articleId} AND input_revision = ${article.revision} AND origin = 'model'
       ORDER BY id DESC LIMIT 1`;
     if (!prior || prior.input_revision !== article.revision || prior.prompt_version !== ANALYZE_PROMPT_VERSION)
@@ -675,10 +688,10 @@ export async function reselectArticle(articleId: string): Promise<{ analysisId: 
     }
     const [row] = await tx<{ id: number }[]>`
       INSERT INTO analyses (article_id, input_revision, origin, model, prompt_version, receipt_ids, relevance, category, tags,
-        subjects, title_zh, summary_zh, reason_zh, score, selected, output)
+        subjects, title_zh, summary_zh, reason_zh, score, selected, board, perspectives, output)
       VALUES (${articleId}, ${article.revision}, 'rule', ${prior.model}, ${prior.prompt_version}, ${prior.receipt_ids},
         ${prior.relevance}, ${prior.category}, ${prior.tags}, ${prior.subjects}, ${prior.title_zh}, ${prior.summary_zh},
-        ${prior.reason_zh}, ${prior.score}, ${selected}, ${tx.json(output as never)}) RETURNING id`;
+        ${prior.reason_zh}, ${prior.score}, ${selected}, ${prior.board}, ${prior.perspectives}, ${tx.json(output as never)}) RETURNING id`;
     await tx`UPDATE articles SET processing_state = ${prior.relevance === "block" ? "blocked" : "analyzed"},
       processing_error = NULL, processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL
       WHERE id = ${articleId} AND revision = ${article.revision}`;

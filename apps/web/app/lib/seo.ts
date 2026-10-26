@@ -1,3 +1,4 @@
+import { BOARDS, PERSPECTIVES } from "@aihot/industry/content";
 // Page metadata from one place: title template, canonical address, OG images, robots; and list addresses,
 // with the feed filters they carry. The site's name and wording come from site/site.ts;
 //; its address from SITE_URL.
@@ -52,17 +53,19 @@ export function readFilters(params: URLSearchParams): TimelineFilters {
     channel: isChannelKey(channel) ? channel : "all",
     category: category && isCategoryKey(category) ? category : null,
     tag: params.get("tag")?.trim() || null,
+    board: (BOARDS as readonly string[]).includes(params.get("board") ?? "") ? params.get("board") : null,
+    perspective: (PERSPECTIVES as readonly string[]).includes(params.get("perspective") ?? "") ? params.get("perspective") : null,
   };
 }
 
 /** Feed filters as list address parameters: the default channel and unset filters are left out. */
 export function filterParams(f: TimelineFilters) {
-  return { channel: f.channel === "all" ? null : f.channel, category: f.category, tag: f.tag };
+  return { channel: f.channel === "all" ? null : f.channel, category: f.category, tag: f.tag, board: f.board ?? null, perspective: f.perspective ?? null };
 }
 
 /** Filter combinations are browsing views; the unfiltered feed and its archive pages remain indexable. */
 export function hasFeedFilters(filters: TimelineFilters | undefined): boolean {
-  return !!filters && (filters.channel !== "all" || !!filters.category || !!filters.tag);
+  return !!filters && (filters.channel !== "all" || !!filters.category || !!filters.tag || !!filters.board || !!filters.perspective);
 }
 
 /** "Title · Site". */

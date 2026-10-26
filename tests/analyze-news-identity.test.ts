@@ -12,7 +12,7 @@ const steps: string[] = [];
 const provider = await stub((_hit, request) => {
   const step = analysisStep(request.body);
   steps.push(step);
-  const result = step === "prefilter" ? { label: "PASS", reason: "fixture" } : step === "score" ? { attentionScore: SELECTING_SCORE } : "invalid output";
+  const result = step === "prefilter" ? { label: "PASS", reason: "fixture" } : step === "score" ? { score: SELECTING_SCORE, board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" } : "invalid output";
   return { choices: [{ message: { content: typeof result === "string" ? result : JSON.stringify(result) } }] };
 });
 pointModels(provider.url);

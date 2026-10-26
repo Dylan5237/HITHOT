@@ -39,6 +39,9 @@ export interface ReportEntry {
   storyPublicId: string | null;
   title: string;
   summary: string;
+  board?: string | null;
+  perspectives?: string[];
+  reason?: string | null;
   sourceName: string;
   sourceUrl: string;
   sourceId: string;
@@ -84,13 +87,13 @@ export interface EditionEntry {
 }
 
 type ReportRow = RepresentativeIdentity & {
-  id: string; title: string; summary: string | null; url: string; category: string | null; tags: string[]; score: number | null;
+  id: string; title: string; summary: string | null; board: string | null; perspectives: string[]; reason: string | null; url: string; category: string | null; tags: string[]; score: number | null;
   first_party: boolean; body_mode: "full" | "summary"; timeline_at: Date;
   source_id: string; source_name: string; source_kind: string;
   fact_id: number | null; fact_public_id: string | null; story_id: number | null; story_public_id: string | null;
 };
 
-const REPORT_FIELDS = sql`p.article_id AS id, p.title, p.summary, p.url, p.category, p.tags, p.score, (s.tier = 'T1') AS first_party, p.body_mode, p.timeline_at,
+const REPORT_FIELDS = sql`p.article_id AS id, p.title, p.summary, p.board, p.perspectives, p.reason, p.url, p.category, p.tags, p.score, (s.tier = 'T1') AS first_party, p.body_mode, p.timeline_at,
   ${REPRESENTATIVE_COLUMNS}, s.id AS source_id, s.name AS source_name, s.kind AS source_kind,
   f.id AS fact_id, f.public_id AS fact_public_id, st.id AS story_id, st.public_id::text AS story_public_id`;
 
@@ -130,6 +133,7 @@ function roleOf(kind: string, official: boolean): string {
 function reportEntry(r: ReportRow): ReportEntry {
   return {
     itemId: r.id, factId: r.fact_public_id, storyPublicId: r.story_public_id, title: r.title, summary: r.summary ?? "",
+    board: r.board, perspectives: r.perspectives, reason: r.reason,
     sourceName: r.source_name, sourceUrl: r.url, sourceId: r.source_id, firstParty: r.first_party,
     role: roleOf(r.source_kind, representativePriority(r) < 3), score: r.score, publishedAt: r.timeline_at.toISOString(),
   };

@@ -17,6 +17,8 @@ export interface ItemRow {
   original_title: string | null;
   summary: string | null;
   reason: string | null;
+  board?: string | null;
+  perspectives?: string[];
   category: string | null;
   tags: string[];
   score: number | null;
@@ -49,7 +51,7 @@ export interface ItemRow {
 
 /** Columns every item listing selects. Internal judgement details never leave this layer. */
 export const ITEM_COLUMNS = sql`
-  p.article_id AS id, p.title, p.original_title, p.summary, p.reason, p.category, p.tags, p.score,
+  p.article_id AS id, p.title, p.original_title, p.summary, p.reason, p.board, p.perspectives, p.category, p.tags, p.score,
   p.selected, p.seat, p.channel, p.url, p.published_at, p.discovered_at, p.timeline_at, p.visibility,
   p.body_mode, p.indexable, p.fact_id, s.name AS source_name, s.participation_mode AS source_mode,
   a.x_post, a.author, a.language,
@@ -58,11 +60,11 @@ export const ITEM_COLUMNS = sql`
   CASE WHEN p.channel = 'x' THEN tr.body_text END AS zh_text, qt.text_zh AS quoted_zh`;
 
 /** Public API listings never render article bodies, X media or story metadata. */
-export type ApiItemRow = Pick<ItemRow, "id" | "title" | "original_title" | "summary" | "source_name" | "url" | "published_at" | "discovered_at" | "category" | "score" | "selected" | "reason">;
+export type ApiItemRow = Pick<ItemRow, "id" | "title" | "original_title" | "summary" | "source_name" | "url" | "published_at" | "discovered_at" | "category" | "score" | "selected" | "reason" | "board" | "perspectives">;
 /** `selected` is the machine meaning: the report holds its fact's selected seat (scope.ts seatedCondition). */
 export const API_ITEM_COLUMNS = sql`
   p.article_id AS id, p.title, p.original_title, p.summary, s.name AS source_name, p.url,
-  p.published_at, p.discovered_at, p.category, p.score, (p.selected AND p.seat) AS selected, p.reason`;
+  p.published_at, p.discovered_at, p.category, p.score, (p.selected AND p.seat) AS selected, p.reason, p.board, p.perspectives`;
 export const API_ITEM_FROM = sql`FROM publications p JOIN sources s ON s.id = p.source_id`;
 
 /** A translation of an older revision is left out: the original changed after it (the worker translates it again). */
@@ -157,6 +159,7 @@ export function toItemSummary(row: ItemRow): ItemSummary {
     originalTitle: row.original_title,
     summary: row.summary,
     reason: row.selected ? row.reason : null,
+    board: row.board ?? null, perspectives: row.perspectives ?? [],
     source: { name: publicSourceName(row.source_name) },
     links: { original: row.url },
     publishedAt: row.published_at?.toISOString() ?? null,
@@ -176,7 +179,7 @@ export function toFeedItemSummary(row: ItemRow): FeedItemSummary {
   const item = toItemSummary(row);
   const x = showsPost(row) ? xView(row, true) : null;
   return {
-    id: item.id, title: item.title, summary: item.summary ?? (x?.text || null), reason: item.reason,
+    id: item.id, title: item.title, summary: item.summary ?? (x?.text || null), reason: item.reason, board: item.board, perspectives: item.perspectives,
     source: item.source, publishedAt: item.publishedAt, timelineAt: item.timelineAt,
     category: item.category, tags: item.tags, score: item.score, selected: item.selected, channel: item.channel,
     x: x ? {
@@ -211,4 +214,9 @@ export async function seatHolders(rows: ItemRow[], now: Date, db: Db = sql): Pro
     WHERE p.fact_id IN ${db([...new Set(yielding.map((r) => r.fact_id!))])} AND ${seatedCondition(now)} AND ${foldableSelectionCondition()}`;
   const byFact = new Map(holders.map((h) => [Number(h.fact_id), { id: h.id, title: h.title }]));
   return new Map(yielding.flatMap((r) => (byFact.has(Number(r.fact_id)) ? [[r.id, byFact.get(Number(r.fact_id))!] as const] : [])));
+}
+
+/** Industry board and ordered focus perspectives share the public read layer. */
+export function contentCondition(q: { board?: string | null; perspective?: string | null }) {
+  return sql`${q.board ? sql`AND p.board = ${q.board}` : sql``} ${q.perspective ? sql`AND ${q.perspective} = ANY(p.perspectives)` : sql``}`;
 }

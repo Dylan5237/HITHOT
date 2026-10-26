@@ -234,6 +234,7 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
     sourceName: publicSourceName(metadata.sourceName),
     sourceIconUrl: a?.sourceIcon ? proxiedImage(a.sourceIcon, "avatar") : null,
     ...(iconSrcSet ? { sourceIconSrcSet: iconSrcSet } : {}),
+    board: raw.board ?? null, perspectives: raw.perspectives ?? [], reason: raw.reason ?? null,
     firstParty: a?.firstParty ?? false,
     available: true,
   };

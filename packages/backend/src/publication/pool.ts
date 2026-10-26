@@ -4,7 +4,7 @@ import { beijingDate, beijingMidnight } from "@aihot/contracts/time";
 import { one, sql, withCustomPlans, type Db } from "../db.ts";
 import { cachedByKey, sharedSearch } from "../lib/cache.ts";
 import {
-  categoryCondition, channelCondition, ITEM_COLUMNS, ITEM_FROM, seatHolders, tagCondition, toFeedItemSummary,
+  contentCondition, categoryCondition, channelCondition, ITEM_COLUMNS, ITEM_FROM, seatHolders, tagCondition, toFeedItemSummary,
   type ItemRow,
 } from "./items.ts";
 import { listedCondition } from "./scope.ts";
@@ -115,11 +115,11 @@ export function publicMatchCondition(terms: string[]) {
 async function listedCount(f: TimelineFilters, now: Date): Promise<number> {
   return Number(one(await sql<{ n: number }[]>`
     SELECT count(*) AS n FROM (SELECT 1 FROM publications p WHERE ${listedCondition(now)}
-      ${channelCondition(f.channel)} ${categoryCondition(f.category)} ${tagCondition(f.tag)} LIMIT ${POOL_MAX_PAGES * POOL_PAGE_SIZE}) t`).n);
+      ${channelCondition(f.channel)} ${categoryCondition(f.category)} ${tagCondition(f.tag)} ${contentCondition(f)} LIMIT ${POOL_MAX_PAGES * POOL_PAGE_SIZE}) t`).n);
 }
 
 /** Without a search the total only sets the page count: it is reused for 30 seconds per filter. */
-const poolTotal = cachedByKey((f: TimelineFilters) => JSON.stringify([f.channel, f.category, f.tag]), (f) => listedCount(f, new Date()), { freshMs: 30_000, maxStaleMs: 30_000, maxKeys: 200 });
+const poolTotal = cachedByKey((f: TimelineFilters) => JSON.stringify([f.channel, f.category, f.tag, f.board, f.perspective]), (f) => listedCount(f, new Date()), { freshMs: 30_000, maxStaleMs: 30_000, maxKeys: 200 });
 
 export interface PoolQuery extends TimelineFilters {
   q?: string | null;
@@ -130,7 +130,7 @@ export interface PoolQuery extends TimelineFilters {
 
 // Identical searches share their read before taking search capacity.
 const searchPool = sharedSearch(
-  (q: PoolQuery) => JSON.stringify([q.channel, q.category, q.tag, q.q, q.tab, q.page]),
+  (q: PoolQuery) => JSON.stringify([q.channel, q.category, q.tag, q.board, q.perspective, q.q, q.tab, q.page]),
   queryPool, (q) => !!q.q?.trim(),
 );
 
@@ -144,7 +144,7 @@ async function queryPool(query: PoolQuery, now: Date): Promise<PoolResponse> {
   const tab = q && query.tab === "relevance" ? "relevance" : "time";
   const terms = q ? searchTerms(q) : [];
   const entityTag = q ? queryEntityTag(q) : null;
-  const filters = sql`${channelCondition(query.channel)} ${categoryCondition(query.category)} ${tagCondition(query.tag)}`;
+  const filters = sql`${channelCondition(query.channel)} ${categoryCondition(query.category)} ${tagCondition(query.tag)} ${contentCondition(query)}`;
   const offset = (page - 1) * POOL_PAGE_SIZE;
   const cap = POOL_MAX_PAGES * POOL_PAGE_SIZE;
 
@@ -233,7 +233,7 @@ async function queryPool(query: PoolQuery, now: Date): Promise<PoolResponse> {
 
   const holders = await seatHolders(rows, now);
   return {
-    filters: { channel: query.channel, category: query.category, tag: query.tag, q, tab },
+    filters: { channel: query.channel, category: query.category, tag: query.tag, board: query.board ?? null, perspective: query.perspective ?? null, q, tab },
     items: rows.map((r) => (holders.has(r.id) ? { ...toFeedItemSummary(r), reason: null, sameEvent: holders.get(r.id)! } : toFeedItemSummary(r))),
     page,
     pageCount: Math.min(POOL_MAX_PAGES, Math.max(1, Math.ceil(total / POOL_PAGE_SIZE))),

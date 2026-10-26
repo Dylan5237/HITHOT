@@ -5,6 +5,7 @@
 // (industry/prompts/report-period*.md).
 import { z } from "zod";
 import { EDITION_TIMES, REPORTS, SITE } from "@aihot/site";
+import { DAILY_PERSPECTIVES } from "@aihot/industry/content";
 import { PLAIN_TERMS, RELEASE } from "@aihot/industry/taxonomy";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import { modelFor } from "../editorial/models.ts";
@@ -103,8 +104,8 @@ export async function composeDaily(date: string, reason?: string): Promise<{ key
       : { title: REPORTS.quiet.title, leadParagraph: REPORTS.quiet.paragraph.replace("{start}", windowPoint(start)).replace("{end}", windowPoint(end)) },
     leadItemId: lead?.entry.itemId ?? null,
     highlights: rest.slice(0, 3).map((e) => e.entry.itemId),
-    sections: SECTION_ORDER
-      .map((label) => ({ label, items: issue.main.filter((e) => sectionOf(e.category) === label).map((e) => e.entry) }))
+    sections: DAILY_PERSPECTIVES
+      .map((label) => ({ label, items: issue.main.filter((e) => (e.entry.perspectives?.[0] ?? "产品技术") === label).map((e) => e.entry) }))
       .filter((s) => s.items.length > 0),
     flashes: issue.flashes.map((e) => e.entry),
     metrics: dailyMetrics(issue.main),

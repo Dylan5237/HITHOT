@@ -80,6 +80,11 @@ export const FeedItem = memo(function FeedItem({ item, group, filters, read = fa
         </>
       )}
 
+      {(item.board || item.perspectives?.length) && <div className="relative z-10 mt-2 flex flex-wrap gap-2 text-[12px] text-accent">
+        {item.board && <Link to={`/?board=${encodeURIComponent(item.board)}`}>{item.board}</Link>}
+        {item.perspectives?.map((p) => <Link key={p} to={`/?perspective=${encodeURIComponent(p)}`}>{p}</Link>)}
+      </div>}
+
       {isX && item.x!.media.length > 0 && <MediaThumbs media={item.x!.media} className="mt-2.5" />}
       {isX && item.x!.quoted?.text && <QuotedLine quoted={item.x!.quoted} />}
 

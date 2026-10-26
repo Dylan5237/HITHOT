@@ -9,6 +9,29 @@ import { loadTimeline } from "@aihot/backend/publication/timeline";
 
 after(closeDb);
 
+test("board and either perspective filter the public timeline and bind pagination", async () => {
+  const prefix = `focus-${tag()}`, at = new Date("2024-01-01T00:00:00Z");
+  await sql`INSERT INTO sources(id,name,kind,tier) VALUES(${prefix},${prefix},'rss','T1')`;
+  for (const [suffix, board, perspectives] of [
+    ["a", "政策标准", ["产品技术", "市场经营"]],
+    ["b", "政策标准", ["市场经营"]],
+    ["c", "厂商动态", ["产品技术"]],
+  ] as const) {
+    const id = `${prefix}-${suffix}`;
+    await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at)
+      VALUES(${id},${prefix},${id},'https://example.org/focus',${id},${at},${at})`;
+    await sql`INSERT INTO publications(article_id,source_id,title,url,channel,discovered_at,timeline_at,sort_at,visible_after,eligible,selected,tags,board,perspectives)
+      VALUES(${id},${prefix},${id},'https://example.org/focus','news',${at},${at},${at},${at},true,true,${[prefix]},${board},${[...perspectives]})`;
+  }
+  const q = { channel: "all" as const, category: null, tag: prefix, now: new Date("2024-01-02T00:00:00Z") };
+  const result = await loadTimeline({ ...q, perspective: "市场经营", board: "政策标准" });
+  assert.deepEqual(new Set(result.cards.map(c => c.item.id)), new Set([`${prefix}-a`, `${prefix}-b`]));
+  assert.equal(result.cards.find(c => c.item.id === `${prefix}-a`)?.item.perspectives?.[1], "市场经营");
+  const page = await loadTimeline({ ...q, perspective: "市场经营", limit: 1 });
+  assert.ok(page.nextCursor);
+  await assert.rejects(loadTimeline({ ...q, perspective: "产品技术", cursor: page.nextCursor }), /cursor does not match/);
+});
+
 test("timeline grouping preserves evidence scope and filter-local anchors", async () => {
   const prefix = `timeline-scope-${tag()}`;
   const at = new Date("2026-01-01T00:00:00Z");

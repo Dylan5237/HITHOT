@@ -162,6 +162,8 @@ function Story({ c, dated, className = "" }: { c: ReportCitation; dated: boolean
             )}
           </h3>
           {c.summary && <p className="mt-2 line-clamp-4 text-[15px] leading-[1.85] text-ink-2 @[560px]:text-justify">{c.summary}</p>}
+          {!!c.perspectives?.length && <p className="mt-2 text-[12px] text-accent">{[c.board, ...c.perspectives].filter(Boolean).join(" · ")}</p>}
+          {c.reason && <p className="mt-2 text-[13px] leading-relaxed text-note">推荐理由：{c.reason}</p>}
           {!!c.related?.length && <Related items={c.related} className="mt-3" />}
           <div className="mt-auto pt-3">
             <Original c={c} />

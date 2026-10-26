@@ -32,7 +32,7 @@ const provider = await stub(async (_hit, request) => {
     return new Reply(503, { error: "temporary outage" });
   }
   const content = step === "prefilter" ? { label: original ? "BLOCK" : "PASS", reason: "local fixture" }
-    : step === "score" ? { attentionScore: SELECTING_SCORE }
+    : step === "score" ? { score: SELECTING_SCORE, board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" }
     : step === "structure" ? { category: "policy", tags: [], subjects: [], fact: null }
     : { itemType: "policy_release", authorRole: "principal", tags: ["政策发布"], editorialJudgment: "模型能力提升", titleZh: `新判断 ${T}`, summaryZh: "政策发布并提供评测和价格。" };
   return { choices: [{ message: { content: JSON.stringify(content) } }] };

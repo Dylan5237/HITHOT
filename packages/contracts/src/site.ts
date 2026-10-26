@@ -44,6 +44,8 @@ export interface ItemSummary {
   originalTitle: string | null;
   summary: string | null;
   reason: string | null;
+  board?: string | null;
+  perspectives?: string[];
   source: SourceRef;
   links: { original: string };
   publishedAt: string | null;
@@ -58,7 +60,7 @@ export interface ItemSummary {
 }
 
 /** The fields rendered by a site feed card; full original text lives in the item detail. */
-export interface FeedItemSummary extends Pick<ItemSummary, "id" | "title" | "summary" | "reason" | "source" | "publishedAt" | "timelineAt" | "category" | "tags" | "score" | "selected" | "channel"> {
+export interface FeedItemSummary extends Pick<ItemSummary, "id" | "title" | "summary" | "reason" | "source" | "publishedAt" | "timelineAt" | "category" | "tags" | "score" | "selected" | "channel" | "board" | "perspectives"> {
   x: (Pick<XPostView, "authorName" | "handle" | "avatarUrl" | "avatarSrcSet" | "media"> & {
     quoted: Omit<NonNullable<XPostView["quoted"]>, "url"> | null;
   }) | null;
@@ -101,6 +103,8 @@ export interface HotStripEntry {
 }
 
 export interface TimelineFilters {
+  board?: string | null;
+  perspective?: string | null;
   channel: ChannelKey;
   category: CategoryKey | null;
   tag: string | null;
@@ -281,6 +285,9 @@ export function reportDateLabel(kind: ReportKind, key: string): string {
 }
 
 export interface ReportCitation {
+  board?: string | null;
+  perspectives?: string[];
+  reason?: string | null;
   itemId: string | null;
   title: string;
   summary: string | null;

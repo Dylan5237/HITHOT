@@ -22,6 +22,25 @@ after(async () => {
   await closeDb();
 });
 
+test("a daily puts a report once under its first perspective and retains its other focus", async () => {
+  const at = editionAt("daily", "2021-03-01", -120);
+  const ids: string[] = [];
+  for (const [label, perspectives] of [["market", ["市场经营", "产品技术"]], ["product", ["产品技术"]]] as const) {
+    const id = await analyzed(`focus-${label}`, at);
+    ids.push(id);
+    await sql`UPDATE analyses SET board='政策标准', perspectives=${[...perspectives]}, reason_zh='接口改造影响排期' WHERE article_id=${id}`;
+    await publishArticle(id, { now: at, releasedAt: at });
+  }
+  await composeDaily("2021-03-01");
+  const [row] = await sql`SELECT content FROM reports WHERE kind='daily' AND key='2021-03-01'`;
+  const sections = row!.content.sections;
+  assert.deepEqual(sections.map((s: any) => s.label), ["市场经营", "产品技术"]);
+  assert.equal(sections[0].items[0].itemId, ids[0]);
+  assert.deepEqual(sections[0].items[0].perspectives, ["市场经营", "产品技术"]);
+  assert.equal(sections[1].items[0].itemId, ids[1]);
+  assert.equal(new Set(sections.flatMap((s: any) => s.items.map((i: any) => i.itemId))).size, 2);
+});
+
 async function analyzed(label: string, timelineAt: Date): Promise<string> {
   const { articleId, backfill } = await upsertMaterial({
     sourceId: SOURCE,

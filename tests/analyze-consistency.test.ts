@@ -19,7 +19,7 @@ const provider = await stub(async (_hit, request) => {
     await waiting.release.promise;
   }
   const content = step === "prefilter" ? { label: "PASS", reason: "local fixture" }
-    : step === "score" ? { attentionScore: SELECTING_SCORE }
+    : step === "score" ? { score: SELECTING_SCORE, board: "政策标准", perspectives: ["产品技术"], reason: "系统改造需求影响产品规划" }
     : step === "structure" ? { category: "policy", tags: [], subjects: [], scope: "single", fact: null }
     : { itemType: "policy_release", authorRole: "principal", tags: ["政策发布"], editorialJudgment: "模型能力提升", titleZh: "实验室发布新模型", summaryZh: "实验室发布新模型，并公布了评测结果与价格。" };
   return { choices: [{ message: { content: JSON.stringify(content) } }] };

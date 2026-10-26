@@ -1,3 +1,4 @@
+import { BOARDS, PERSPECTIVES } from "@aihot/industry/content";
 // First-party site API (/api/site/*). Not public, not versioned, never called /api/v2.
 // Reads through the same public read layer as v1; no cookies are read or set.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -42,6 +43,8 @@ export function siteHandler(fn: Handler): Handler {
 }
 
 export interface FilterParams {
+  board?: string | null;
+  perspective?: string | null;
   channel: ChannelKey;
   category: CategoryKey | null;
   tag: string | null;
@@ -53,7 +56,10 @@ export function parseFilters(q: Record<string, string>): FilterParams {
   const category = q.category ?? null;
   if (category !== null && !isCategoryKey(category)) throw new BadRequest("invalid category");
   const tag = q.tag?.trim() ? q.tag.trim().slice(0, 60) : null;
-  return { channel, category: category as CategoryKey | null, tag };
+  const board = q.board || null, perspective = q.perspective || null;
+  if (board && !(BOARDS as readonly string[]).includes(board)) throw new BadRequest("invalid board");
+  if (perspective && !(PERSPECTIVES as readonly string[]).includes(perspective)) throw new BadRequest("invalid perspective");
+  return { channel, category: category as CategoryKey | null, tag, board, perspective };
 }
 
 export function registerSite(app: FastifyInstance) {
@@ -65,7 +71,7 @@ export function registerSite(app: FastifyInstance) {
     const q = looseQuery(req);
     const filters = parseFilters(q);
     const limit = Math.min(Math.max(Number(q.limit) || 20, 1), 40);
-    const unfiltered = filters.channel === "all" && !filters.category && !filters.tag && !q.cursor;
+    const unfiltered = filters.channel === "all" && !filters.category && !filters.tag && !filters.board && !filters.perspective && !q.cursor;
     const [data, hot] = await Promise.all([
       loadTimeline({ ...filters, cursor: q.cursor || null, limit }),
       unfiltered ? loadHotStrip() : null,
