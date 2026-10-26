@@ -382,8 +382,9 @@ export async function fetchDetail(url: string, source: SourceRow, need: DetailNe
     // The rules read a page's head and byline. A page past the size limit (a long paper with inline
     // figures) is read up to it rather than failing on every run; a body cut there is not kept.
     const res = requireOk(await collectionHttp.fetch(url, { headers: languageHeaders(source.config.acceptLanguage), timeoutMs: 20_000, truncate: true }), "detail");
-    html = res.text();
-    page = { document: contentDocument(html), url: res.url, whole: !res.truncated && /html/.test(res.headers.get("content-type") ?? "") };
+    const raw = res.text();
+    html = unwrapJsonHtml(raw);
+    page = { document: contentDocument(html), url: res.url, whole: !res.truncated && (/html/.test(res.headers.get("content-type") ?? "") || html !== raw) };
   }
   const $ = html === null ? null : cheerio.load(html);
 

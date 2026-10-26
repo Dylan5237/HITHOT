@@ -11,6 +11,8 @@ import { stopBoss } from "@aihot/backend/jobs/queue";
 import { extractArticleBody } from "@aihot/backend/content/extract";
 import { collectSource } from "@aihot/backend/sources/collect";
 import { updateSource } from "@aihot/backend/admin/sources";
+import { fetchDetail } from "@aihot/backend/sources/web-list";
+import { loadSource } from "@aihot/backend/sources/collect";
 
 const T = tag();
 const LONG = `${"A card label that swallowed the summary of the article it links to, ".repeat(2)}${T}`;
@@ -28,6 +30,7 @@ const pages: Record<string, (base: string) => string> = {
   [`/p/a-${T}`]: () =>
     html(`<meta name="description" content="Summary of A"><meta property="article:published_time" content="2026-01-01T00:00:00Z">`, `<h1>Detail heading A</h1><p class="byline"><time datetime="2026-09-21T08:00:00Z">Sep 21</time></p>`),
   [`/p/b-${T}`]: () => html(`<meta name="description" content="Summary of B"><meta property="article:published_time" content="2026-01-01T00:00:00Z">`, `<article><h1>Detail heading B ${T}</h1><p>${ARTICLE_BODY}</p></article>`),
+  "/wrapped": () => JSON.stringify(html("", `<article><h1>Wrapped detail</h1><div class="byline"><time datetime="2026-09-21T08:00:00Z">Sep 21</time></div><p>${ARTICLE_BODY}</p></article>`)),
   [`/j/1-${T}`]: () => html(`<meta property="article:published_time" content="2026-09-27T01:00:00Z">`, "<p>one</p>"),
   [`/j/2-${T}`]: () => html(`<meta property="article:published_time" content="2026-09-27T02:00:00Z">`, "<p>two</p>"),
 };
@@ -44,7 +47,7 @@ const server = http.createServer((req, res) => {
   const path = req.url ?? "";
   pageReads.set(path, (pageReads.get(path) ?? 0) + 1);
   const body = path.startsWith("/http") ? jina(base, path.slice(1)) : Object.hasOwn(pages, path) ? pages[path]!(base) : null;
-  res.writeHead(body === null ? 404 : 200, { "content-type": path.endsWith(".xml") ? "application/rss+xml" : "text/html; charset=utf-8" });
+  res.writeHead(body === null ? 404 : 200, { "content-type": path === "/wrapped" ? "application/json" : path.endsWith(".xml") ? "application/rss+xml" : "text/html; charset=utf-8" });
   res.end(body ?? "");
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
@@ -109,6 +112,15 @@ test("detail rules fill what the listing lacks, and a detail title survives the 
     "a clean listing title stays; the byline, not the listing date or page metadata, dates it");
   assert.deepEqual([b!.title, b!.excerpt, b!.published_at, b!.revision], [`Detail heading B ${T}`, "Summary of B", null, 1],
     "a label that swallowed its summary takes the page's heading; without a byline there is no date; the listing does not revise it back");
+});
+
+test("a detail returned as a JSON HTML string retains its byline and complete body", async () => {
+  const source = (await loadSource(id("detail")))!;
+  const detail = await fetchDetail(base + "/wrapped", source, { date: true, title: true, summary: false, body: true });
+  assert.equal(detail.title, "Wrapped detail");
+  assert.equal(detail.publishedAt?.toISOString(), "2026-09-21T08:00:00.000Z");
+  assert.ok(detail.body?.text.includes(ARTICLE_BODY.trim()));
+  assert.equal(pageReads.get("/wrapped"), 1);
 });
 
 test("a Jina listing is read on every fetch, and buys a detail rendering only where a regex rule needs it", async () => {
