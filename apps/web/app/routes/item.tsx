@@ -12,6 +12,7 @@ import { copyText } from "../lib/clipboard";
 import { SameEventBadge, SelectedBadge } from "../components/ui/Badge";
 import { ScoreLabel, shownScore } from "../components/ui/Score";
 import { PillTabs } from "../components/ui/Tabs";
+import { buttonClass } from "../components/ui/Controls";
 import { ArticleLayout, RailSection, useContainedScroll } from "../components/ui/Page";
 import { Menu, MenuItem } from "../components/ui/Menu";
 import { StarButton } from "../features/feed/parts";
@@ -363,16 +364,16 @@ function ItemView({ item }: { item: SiteItemDetail }) {
         : { key: "markdown", label: "导出 Markdown", icon: <IconDownload size={20} />, href: `/items/${item.id}/markdown`, download: true }]
       : []),
   ];
-  // Desktop actions head the right rail, one row as tall as 返回 at the head of the left one.
+  // Desktop actions head the right rail, with the original as the primary reading action.
   const actions = (
     <div className="flex items-center gap-1">
       <a
         href={item.links.original}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-ink-4 hover:text-ink"
+        className={`${buttonClass("primary", "lg")} flex-1`}
       >
-        {originalLabel} <IconExternal size={13} />
+        {originalLabel} <IconExternal size={16} />
       </a>
       <StarButton item={item} size={32} />
       {moreMenu}
