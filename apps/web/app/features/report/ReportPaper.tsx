@@ -10,6 +10,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { REPORT_NAMES, type ReportCitation, type ReportDetail, type ReportNavigationEntry } from "@aihot/contracts/site";
 import { REPORTS, SITE, subjectAfter, withSubject } from "@aihot/site";
+import { DAILY_PERSPECTIVES } from "@aihot/industry/content";
 import { Badge } from "../../components/ui/Badge";
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight } from "../../components/icons";
 import { Kicker } from "../../components/ui/Kicker";
@@ -236,6 +237,20 @@ function pagesOf(report: ReportDetail, leadStory: ReportCitation | null): Page[]
     .filter((p) => p.items.length > 0);
 }
 
+/** Perspective editions keep their lead in its own column too, including a one-item edition. */
+function dailyColumns(report: ReportDetail): Page[] | null {
+  if (report.kind !== "daily" || !report.sections.some((s) => DAILY_PERSPECTIVES.some((p) => p === s.label))) return null;
+  const columns: Page[] = DAILY_PERSPECTIVES.map((label, i) => ({ id: `focus-${i + 1}`, label, summary: null, items: [] }));
+  const seen = new Set<string>();
+  for (const section of report.sections) for (const item of section.items) {
+    if (seen.has(keyOf(item))) continue;
+    seen.add(keyOf(item));
+    const column = columns.find((c) => c.label === (item.perspectives?.[0] ?? section.label));
+    column?.items.push(item);
+  }
+  return columns;
+}
+
 /**
  * The lead's picture; landscape pictures are cropped to between 16:10 and 2:1. A picture that is not
  * the lead's own (a weekly or monthly's, from its first highlight) is captioned with its story.
@@ -459,7 +474,7 @@ function History({ report, index }: { report: ReportDetail; index: ReportNavigat
 
 /** The issue's pages for the phone outline: the front page, each page under its number, then 快讯. */
 export function reportOutline(report: ReportDetail): OutlineEntry[] {
-  const pages = pagesOf(report, leadStoryOf(report));
+  const pages = dailyColumns(report) ?? pagesOf(report, leadStoryOf(report));
   if (pages.length === 0 && report.flashes.length === 0) return [];
   return [
     { id: "report-start", text: "头版", level: 2, mark: "" },
@@ -471,14 +486,21 @@ export function reportOutline(report: ReportDetail): OutlineEntry[] {
 export function ReportPaper({ report, index }: { report: ReportDetail; index: ReportNavigationEntry[] }) {
   const daily = report.kind === "daily";
   const leadStory = leadStoryOf(report);
-  const pages = pagesOf(report, leadStory);
-  const count = pages.reduce((sum, p) => sum + p.items.length, 0) + (leadStory ? 1 : 0);
+  const columns = dailyColumns(report);
+  const pages = columns ?? pagesOf(report, leadStory);
+  const count = pages.reduce((sum, p) => sum + p.items.length, 0) + (!columns && leadStory ? 1 : 0);
   // Only a daily comes out with nothing in it: a day the editors judged with nothing new (REPORTS.quiet).
   const quiet = count === 0 && report.flashes.length === 0;
   return (
     <article className="@container [overflow-wrap:anywhere]">
       <Masthead report={report} index={index} quiet={quiet} />
-      {quiet ? (
+      {columns ? (
+        <div className="grid gap-x-10 @[760px]:grid-cols-2">
+          {columns.map((p) => <SectionPage key={p.id} id={p.id} label={p.label}>
+            {p.items.length > 0 ? p.items.map((c) => <Story key={keyOf(c)} c={c} dated={false} className="border-b border-line" />) : <p className="py-6 text-sm text-ink-4">本期无入选内容</p>}
+          </SectionPage>)}
+        </div>
+      ) : quiet ? (
         report.lead && <QuietFront lead={report.lead} />
       ) : (
         <>
@@ -487,7 +509,7 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
         </>
       )}
 
-      {pages.map((p, i) => (
+      {!columns && pages.map((p, i) => (
         <SectionPage key={p.id} id={p.id} no={i + 1} label={p.label}>
           {p.summary && (
             <p className="border-b border-line py-5 text-[15.5px] leading-[1.9] text-ink-2 @[560px]:text-justify">

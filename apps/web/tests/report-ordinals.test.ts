@@ -4,6 +4,7 @@
 // daily archive counting 400 issues beside a masthead that numbers 405.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import * as cheerio from "cheerio";
 import type { ReportDetail, ReportKind, ReportNavigationEntry } from "@aihot/contracts/site";
 import { isoWeekLabel } from "@aihot/contracts/time";
 import { issueNumber, periodGrid } from "../app/features/report/format.ts";
@@ -31,6 +32,10 @@ const api = fakeApi((url) => {
   if (match) {
     const kind = match[1] as ReportKind;
     const key = match[2]!;
+    if (kind === "daily" && key === "2099-05-02") {
+      const item = { itemId: "focus-lead", title: "focus-headline", summary: "focus-summary", sourceName: "Fixture", sourceUrl: "https://example.org/", sourceIconUrl: null, firstParty: true, publishedAt: null, available: true, board: "厂商动态", perspectives: ["市场经营", "产品技术"], reason: "focus-recommendation" };
+      return { ...report(kind, key), issueNumber: 406, lead: { title: item.title, leadParagraph: item.summary }, leadItemId: item.itemId, highlights: [item], sections: [{ label: "市场经营", summary: null, items: [item] }] };
+    }
     if (key === "latest-page") return { index: index(kind), report: report(kind, keys[kind].at(-1)!) };
     if (key.startsWith("navigation/")) return { items: index(kind) };
     if (keys[kind].includes(key)) return report(kind, key);
@@ -82,4 +87,17 @@ test("the daily archive counts every issue, as the masthead numbers them", async
   const response = await fetch(`${web.origin}/daily/archive`);
   assert.equal(response.status, 200, web.logs());
   assert.match(masthead(await response.text()), /共\s*405\s*期/);
+});
+
+test("a one-item perspective daily keeps its lead once in its primary column and shows the empty other column", async () => {
+  const response = await fetch(`${web.origin}/daily/2099-05-02`);
+  assert.equal(response.status, 200, web.logs());
+  const $ = cheerio.load(await response.text());
+  const market = $('section[aria-labelledby="focus-1-t"]');
+  const product = $('section[aria-labelledby="focus-2-t"]');
+  assert.equal(market.find("#r-focus-lead").length, 1);
+  assert.equal($("#r-focus-lead").length, 1);
+  assert.match(market.text(), /市场经营 · 产品技术/);
+  assert.match(market.text(), /focus-recommendation/);
+  assert.match(product.text(), /本期无入选内容/);
 });
