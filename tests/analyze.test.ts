@@ -5,15 +5,17 @@
 import { pointModels, Reply, stub, tag } from "./setup.ts";
 import { analysisStep, type AnalysisStep } from "./analysis-steps.ts";
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { upsertMaterial } from "@aihot/backend/content/materials";
-import { analyzeArticle, buildMaterial, loadAnalyzeInput, normalizeStructure, StructureSchema, tierThreshold, UNDERSTAND_FLOOR } from "@aihot/backend/editorial/analyze";
-import { queueProcessing } from "@aihot/backend/jobs/content";
-import { QUEUES, stopBoss } from "@aihot/backend/jobs/queue";
+import { analyzeArticle, buildMaterial, loadAnalyzeInput, normalizeStructure, reselectArticle, StructureSchema, tierThreshold, UNDERSTAND_FLOOR } from "@aihot/backend/editorial/analyze";
+import { queueProcessing, registerContentJobs } from "@aihot/backend/jobs/content";
+import { getBoss, QUEUES, stopBoss } from "@aihot/backend/jobs/queue";
 import { compactAnswerFirstSummary, enforceIdentity, MAX_BODY_CHARS, parseTranslateOutput } from "@aihot/backend/editorial/writing";
 import { READER_WORDING } from "@aihot/industry/wording";
 import { ITEM_TYPES } from "@aihot/industry/taxonomy";
+import { SELECTION } from "@aihot/industry/selection";
 
 const T = tag();
 const SOURCE = `test-analyze-${T}`;
@@ -21,15 +23,17 @@ const X_SOURCE = `test-analyze-x-${T}`;
 
 interface Req { step: AnalysisStep; marker: string; user: string }
 const requests: Req[] = [];
-const MARKERS = ["CLEAR", "RESCUE", "LOW", "OFFTOPIC", "BARE", "VAGUE", "THIN", "SENSITIVE", "推文", "WORDY", "REFUSAL", "RENUMBER", "UNMENDED"];
+const MARKERS = ["CLEAR", "RESCUE", "LOW", "OFFTOPIC", "BARE", "VAGUE", "THIN", "SENSITIVE", "RESELECT", "NEGATIVE", "推文", "WORDY", "REFUSAL", "RENUMBER", "UNMENDED"];
 // The scores sit a few points around the pack's T1 threshold and understand floor, so each case means
 // the same after a site recalibrates them: selected when the two add up to 2 × T1, written like a
 // selected item when they add up to more than 2 × FLOOR, translated otherwise.
 const T1 = tierThreshold("T1")!;
 const FLOOR = UNDERSTAND_FLOOR;
+const LOWERED = Math.min(T1, FLOOR - 3);
 const scoreAnswers: Record<string, number[]> = {
-  CLEAR: [T1 + 3, T1 - 1], RESCUE: [FLOOR + 1, FLOOR], LOW: [FLOOR, FLOOR - 1], THIN: [T1, T1], SENSITIVE: [T1, T1], 推文: [FLOOR, FLOOR],
+  CLEAR: [T1 + 3, T1 - 1], RESCUE: [FLOOR + 1, FLOOR], LOW: [Math.min(FLOOR, T1) - 1, Math.min(FLOOR, T1) - 2], THIN: [T1, T1], SENSITIVE: [T1, T1], 推文: [Math.min(FLOOR, T1) - 1, Math.min(FLOOR, T1) - 2],
   BARE: [FLOOR - 2, FLOOR - 4], VAGUE: [T1, T1 + 2], WORDY: [T1, T1], REFUSAL: [T1, T1], RENUMBER: [T1, T1], UNMENDED: [T1, T1],
+  RESELECT: [LOWERED + 1, LOWERED], NEGATIVE: [T1, T1],
 };
 
 const WORDY = ["WORDY", "REFUSAL", "RENUMBER", "UNMENDED"];
@@ -87,7 +91,7 @@ const row = async (id: string) =>
     SELECT selected, relevance, score, title_zh, reason_zh, category, tags, subjects, receipt_ids, output FROM analyses WHERE article_id = ${id} ORDER BY id DESC LIMIT 1`)[0]!;
 
 test("a selected item: prefilter, two scores, the content understanding and the structure", async () => {
-  assert.ok(FLOOR >= 4 && FLOOR < T1 && T1 <= 97, "the cases need the understand floor below the T1 threshold, and a few points either side");
+  assert.ok(FLOOR >= 4 && FLOOR <= 97 && T1 >= 4 && T1 <= 97, "the cases need a few valid score points either side of the floor and threshold");
   const id = await article("CLEAR");
   const res = await analyzeArticle(id);
   assert.deepEqual([res!.output!.selected, res!.output!.score], [true, T1 + 1], `${T1 + 3} + ${T1 - 1} >= 2 × ${T1}; the mean is shown`);
@@ -174,7 +178,7 @@ test("structure retains grounded conditions, rejects invented or unseen quotes, 
 
 test("a near-selected item is written like a selected one; below the floor it is translated", async () => {
   const near = await analyzeArticle(await article("RESCUE"));
-  assert.deepEqual([near!.output!.selected, near!.output!.reasonZh], [false, "理由 RESCUE"], `${FLOOR + 1} + ${FLOOR} > 2 × ${FLOOR}`);
+  assert.deepEqual([near!.output!.selected, near!.output!.reasonZh], [2 * FLOOR + 1 >= 2 * T1, "理由 RESCUE"], `${FLOOR + 1} + ${FLOOR} > 2 × ${FLOOR}`);
   const lowId = await article("LOW");
   const low = await analyzeArticle(lowId);
   assert.deepEqual([low!.output!.selected, low!.output!.titleZh, low!.output!.reasonZh], [false, "翻译标题 LOW", null]);
@@ -182,10 +186,154 @@ test("a near-selected item is written like a selected one; below the floor it is
   assert.deepEqual((await row(lowId)).tags, ["政策发布", "电子病历", "Microsoft"], "structure tags");
 });
 
+test("selection-only rechecks a lower threshold without replacing copy or making paid requests", async () => {
+  const previousThreshold = SELECTION.thresholds.T1;
+  try {
+    SELECTION.thresholds.T1 = FLOOR + 5;
+    const id = await article("RESELECT");
+    await assert.rejects(queueProcessing(id, { step: "selection" }), /analyzed or blocked/,
+      "an unjudged article cannot enter the zero-call queue and later fall through to the normal sweep");
+    const first = await analyzeArticle(id);
+    assert.equal(first!.output!.selected, false);
+    const [original] = await sql<{ id: number; title_zh: string; summary_zh: string; reason_zh: string | null; receipt_ids: number[]; output: Record<string, unknown> }[]>`
+      SELECT id, title_zh, summary_zh, reason_zh, receipt_ids, output FROM analyses WHERE article_id = ${id} ORDER BY id DESC LIMIT 1`;
+    assert.equal(original!.output.writer, "summarize", "the high threshold and floor used the cheap copy path");
+    await sql`UPDATE articles SET grouping_status = 'complete', grouped_at = now(), selection_adds_value = true, backfill = false WHERE id = ${id}`;
+    const boss = await getBoss();
+    const downstream = [QUEUES.group, QUEUES.digest, QUEUES.notifySelected, QUEUES.prepareMedia];
+    const [jobsBefore] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM pgboss.job WHERE name = ANY(${downstream})`;
+    const [paidBefore] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM receipt_attempts ra JOIN receipts r ON r.id = ra.receipt_id
+      WHERE r.subject LIKE ${`article:${id}@%`}`;
+    const hitsBefore = requests.length;
+    const providerHitsBefore = provider.hits();
+    SELECTION.thresholds.T1 = LOWERED;
+    const changed = await reselectArticle(id);
+    assert.equal(changed?.selected, true);
+    const [next] = await sql<{ id: number; origin: string; selected: boolean; title_zh: string; summary_zh: string; reason_zh: string | null; receipt_ids: number[]; output: Record<string, unknown> }[]>`
+      SELECT id, origin, selected, title_zh, summary_zh, reason_zh, receipt_ids, output
+      FROM analyses WHERE article_id = ${id} ORDER BY id DESC LIMIT 1`;
+    assert.deepEqual([next!.origin, next!.selected, next!.output.threshold, next!.output.reselectedFrom], ["rule", true, LOWERED, original!.id]);
+    assert.deepEqual([next!.title_zh, next!.summary_zh, next!.reason_zh, next!.receipt_ids, next!.output.writer, next!.output.scores],
+      [original!.title_zh, original!.summary_zh, original!.reason_zh, original!.receipt_ids, "summarize", original!.output.scores]);
+    assert.deepEqual(await reselectArticle(id), changed, "a repeated selection job does not append another analysis");
+    assert.equal((await sql`SELECT 1 FROM analyses WHERE article_id = ${id}`).length, 2);
+    const [paidAfter] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM receipt_attempts ra JOIN receipts r ON r.id = ra.receipt_id
+      WHERE r.subject LIKE ${`article:${id}@%`}`;
+    assert.equal(paidAfter!.count, paidBefore!.count, "no new paid attempt");
+    assert.equal(requests.length, hitsBefore, "the provider was not contacted");
+    assert.equal(provider.hits(), providerHitsBefore);
+    const [publication] = await sql<{ analysis_id: number; selection_candidate: boolean; selected: boolean }[]>`
+      SELECT analysis_id, selection_candidate, selected FROM publications WHERE article_id = ${id}`;
+    assert.deepEqual([publication!.analysis_id, publication!.selection_candidate, publication!.selected], [next!.id, true, true],
+      "publication uses the new judgement and retains the completed grouping decision");
+    const jobId = await queueProcessing(id, { step: "selection" });
+    assert.ok(jobId);
+    const [job] = await sql<{ name: string; data: Record<string, unknown> }[]>`
+      SELECT name, data FROM pgboss.job WHERE data->>'articleId' = ${id} ORDER BY created_on DESC LIMIT 1`;
+    assert.deepEqual([job!.name, job!.data.selectionOnly, job!.data.attemptTag], [QUEUES.analyze, true, undefined]);
+    try {
+      await registerContentJobs(boss);
+      for (const worker of boss.getWipData()) if (worker.name === QUEUES.analyze) boss.notifyWorker(worker.id);
+      const deadline = Date.now() + 10_000;
+      let state: string | undefined;
+      while (Date.now() < deadline) {
+        state = (await sql<{ state: string }[]>`SELECT state FROM pgboss.job WHERE id = ${jobId}`)[0]?.state;
+        if (state === "completed" || state === "failed") break;
+        await delay(20);
+      }
+      assert.equal(state, "completed", "selection-only job must settle within ten seconds");
+    } finally {
+      await boss.offWork(QUEUES.analyze, { wait: true });
+    }
+    assert.equal((await sql`SELECT 1 FROM analyses WHERE article_id = ${id}`).length, 2,
+      "the worker reused the completed reselection");
+    const [paidWorkerAfter] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM receipt_attempts ra JOIN receipts r ON r.id = ra.receipt_id
+      WHERE r.subject LIKE ${`article:${id}@%`}`;
+    assert.equal(paidWorkerAfter!.count, paidBefore!.count);
+    assert.equal(provider.hits(), providerHitsBefore);
+    assert.equal((await sql`SELECT 1 FROM pgboss.job WHERE name = ${QUEUES.group} AND data->>'articleId' = ${id}`).length, 0,
+      "selection-only never schedules event grouping");
+    const [jobsAfter] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM pgboss.job WHERE name = ANY(${downstream})`;
+    assert.equal(jobsAfter!.count, jobsBefore!.count, "selection-only never schedules grouping, digest, push or media preparation");
+  } finally {
+    SELECTION.thresholds.T1 = previousThreshold;
+  }
+});
+
+test("selection-only retains blocked and unmaterialized articles without scoring", async () => {
+  for (const [marker, extra, relevance] of [
+    ["OFFTOPIC", { url: `https://example.com/reblock-${T}` }, "block"],
+    ["BARE", { url: `https://example.com/reunknown-${T}`, bodyText: null, excerpt: null, bodyStatus: "none" }, "unknown"],
+  ] as const) {
+    const id = await article(marker, extra);
+    await analyzeArticle(id);
+    const hitsBefore = requests.length;
+    const changed = await reselectArticle(id);
+    const next = await row(id);
+    assert.deepEqual([changed!.selected, next.relevance, next.selected, next.output.threshold], [false, relevance, false, null]);
+    assert.equal(requests.length, hitsBefore);
+  }
+});
+
+test("selection-only fails closed when a score receipt, prompt or model does not match", async () => {
+  const id = await article("NEGATIVE");
+  await analyzeArticle(id);
+  const [original] = await sql<{ id: number; receipt_ids: number[]; prompt_version: string; score: number; output: Record<string, unknown> }[]>`
+    SELECT id, receipt_ids, prompt_version, score, output FROM analyses WHERE article_id = ${id} ORDER BY id DESC LIMIT 1`;
+  const [scoreReceipt] = await sql<{ id: number; model: string; request: Record<string, unknown> }[]>`
+    SELECT id, model, request FROM receipts WHERE id = ANY(${original!.receipt_ids}) AND purpose = 'score_article' ORDER BY id LIMIT 1`;
+  const hitsBefore = requests.length;
+  const providerHitsBefore = provider.hits();
+  const [paidBefore] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM receipt_attempts ra JOIN receipts r ON r.id = ra.receipt_id
+    WHERE r.subject LIKE ${`article:${id}@%`}`;
+  try {
+    await sql`UPDATE analyses SET receipt_ids = '{}'::bigint[] WHERE id = ${original!.id}`;
+    await assert.rejects(reselectArticle(id), /matching completed score receipts/);
+    await sql`UPDATE analyses SET receipt_ids = ${original!.receipt_ids}, prompt_version = 'old-prompt' WHERE id = ${original!.id}`;
+    await assert.rejects(reselectArticle(id), /current-prompt model analysis/);
+    await sql`UPDATE analyses SET prompt_version = ${original!.prompt_version}, output = ${sql.json({ ...original!.output, scoreModel: "other-model" } as never)} WHERE id = ${original!.id}`;
+    await assert.rejects(reselectArticle(id), /current model/);
+    await sql`UPDATE analyses SET output = ${sql.json(original!.output as never)} WHERE id = ${original!.id}`;
+    await sql`UPDATE receipts SET model = 'other-model' WHERE id = ${scoreReceipt!.id}`;
+    await assert.rejects(reselectArticle(id), /matching completed score receipts/);
+    await sql`UPDATE receipts SET model = ${scoreReceipt!.model}, request = ${sql.json({ ...scoreReceipt!.request, promptVersion: "old-score-prompt" } as never)}
+      WHERE id = ${scoreReceipt!.id}`;
+    await assert.rejects(reselectArticle(id), /matching completed score receipts/);
+    await sql`UPDATE receipts SET request = ${sql.json({ ...scoreReceipt!.request, userHash: "wrong-material" } as never)}
+      WHERE id = ${scoreReceipt!.id}`;
+    await assert.rejects(reselectArticle(id), /matching completed score receipts/);
+    await sql`UPDATE receipts SET request = ${sql.json(scoreReceipt!.request as never)} WHERE id = ${scoreReceipt!.id}`;
+    const scores = original!.output.scores as number[];
+    await sql`UPDATE analyses SET output = ${sql.json({ ...original!.output, scores: [scores[0]! + 1, scores[1]! - 1] } as never)}
+      WHERE id = ${original!.id}`;
+    await assert.rejects(reselectArticle(id), /score values differ from receipts/);
+    await sql`UPDATE analyses SET output = ${sql.json(original!.output as never)}, score = 99 WHERE id = ${original!.id}`;
+    await assert.rejects(reselectArticle(id), /score differs from its original values/);
+  } finally {
+    await sql`UPDATE analyses SET output = ${sql.json(original!.output as never)}, prompt_version = ${original!.prompt_version},
+      receipt_ids = ${original!.receipt_ids}, score = ${original!.score} WHERE id = ${original!.id}`;
+    await sql`UPDATE receipts SET model = ${scoreReceipt!.model}, request = ${sql.json(scoreReceipt!.request as never)} WHERE id = ${scoreReceipt!.id}`;
+  }
+  assert.equal((await sql`SELECT 1 FROM analyses WHERE article_id = ${id}`).length, 1, "rejected checks append nothing");
+  assert.equal(requests.length, hitsBefore, "rejected checks never reach a provider");
+  assert.equal(provider.hits(), providerHitsBefore);
+  const [paidAfter] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM receipt_attempts ra JOIN receipts r ON r.id = ra.receipt_id
+    WHERE r.subject LIKE ${`article:${id}@%`}`;
+  assert.equal(paidAfter!.count, paidBefore!.count);
+});
+
 test("the prefilter's BLOCK stops everything; UNKNOWN with material goes on like PASS", async () => {
+  const offCallsBefore = calls("OFFTOPIC").length;
   const off = await analyzeArticle(await article("OFFTOPIC"));
   assert.deepEqual([off!.output!.relevance, off!.output!.selected], ["block", false]);
-  assert.deepEqual(calls("OFFTOPIC"), ["prefilter"]);
+  assert.deepEqual(calls("OFFTOPIC").slice(offCallsBefore), ["prefilter"]);
   // An UNKNOWN with material is judged and written like a PASS, up to 精选 (T1 + T1 + 2 ≥ 2 × T1).
   const vagueId = await article("VAGUE");
   const vague = await analyzeArticle(vagueId);

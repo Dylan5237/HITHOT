@@ -14,7 +14,7 @@ let boss: PgBoss | null = null;
 let starting: Promise<PgBoss> | null = null;
 
 export interface JobData {
-  "content.analyze": { articleId: string; attemptTag?: string };
+  "content.analyze": { articleId: string; attemptTag?: string; selectionOnly?: boolean };
   "content.extract-body": { articleId: string };
   "events.group": { articleId: string; signalOnly?: boolean };
   "events.digest": { storyId: number };

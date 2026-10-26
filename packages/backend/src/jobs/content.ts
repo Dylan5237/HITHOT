@@ -7,7 +7,7 @@
 import type { PgBoss } from "pg-boss";
 import { sql, type Db } from "../db.ts";
 import { extractArticleBody, pageFetchable } from "../content/extract.ts";
-import { analyzeArticle } from "../editorial/analyze.ts";
+import { analyzeArticle, reselectArticle } from "../editorial/analyze.ts";
 import { isHistorical } from "../content/materials.ts";
 import { publishArticle } from "../publication/publish.ts";
 import { BudgetExceededError, failedReceiptId, failureKind } from "../providers/receipts.ts";
@@ -22,10 +22,11 @@ const MAX_EXTRACT_FAILURES = 3;
 /** An article queued this long ago is queued again, in case its job was lost. */
 const QUEUED_STALE = "30 minutes";
 
-type Step = "extract" | "analyze";
+type Step = "extract" | "analyze" | "selection";
 
 interface Route {
   step: Step;
+  processingState: string;
   /** Not an editorial source: no analysis; the post goes straight to event grouping as discussion evidence. */
   signal: boolean;
   historical: boolean;
@@ -38,8 +39,8 @@ interface Route {
  * history adds no heat).
  */
 async function route(articleId: string, db: Db): Promise<Route | null> {
-  const [row] = await db<{ body_status: string; participation_mode: string; kind: string; config: Record<string, unknown>; url: string; bare: boolean; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
-    SELECT a.body_status, s.participation_mode, s.kind, s.config, a.url, (coalesce(a.body_text, '') = '' AND a.x_post IS NULL) AS bare,
+  const [row] = await db<{ body_status: string; processing_state: string; participation_mode: string; kind: string; config: Record<string, unknown>; url: string; bare: boolean; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
+    SELECT a.body_status, a.processing_state, s.participation_mode, s.kind, s.config, a.url, (coalesce(a.body_text, '') = '' AND a.x_post IS NULL) AS bare,
            a.backfill, a.published_at, a.discovered_at
     FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId}`;
   if (!row) return null;
@@ -49,7 +50,7 @@ async function route(articleId: string, db: Db): Promise<Route | null> {
   const wantsBody = row.config.fetchPublicContent === true || !!row.config.detail || row.kind === "web_list";
   const needsPage = !signal && pageFetchable(row.url, row.kind) && (wantsBody || row.bare);
   const needsXArticle = row.kind === "x_search" && (!signal || (row.participation_mode === "hot_signal" && !historical));
-  return { step: pending && (needsPage || needsXArticle) ? "extract" : "analyze", signal, historical };
+  return { step: pending && (needsPage || needsXArticle) ? "extract" : "analyze", processingState: row.processing_state, signal, historical };
 }
 
 /**
@@ -74,12 +75,16 @@ export async function queueProcessing(articleId: string, opts: { step?: Step; at
   const r = await route(articleId, db);
   if (!r) return null;
   const step = opts.step ?? r.step;
+  if (step === "selection" && (r.signal || opts.attemptTag || !["analyzed", "blocked"].includes(r.processingState)))
+    throw new Error("Selection recheck requires an analyzed or blocked editorial article and no attemptTag");
   const [queued] = await db<{ processing_attempt_tag: string | null }[]>`
     UPDATE articles SET processing_queued_at = now(), processing_attempt_tag = coalesce(${opts.attemptTag ?? null}, processing_attempt_tag)
     WHERE id = ${articleId} RETURNING processing_attempt_tag`;
   if (!queued) return null;
   // Extraction and the sweep only carry articleId; retain the current evaluation's paid identity.
   const attemptTag = queued.processing_attempt_tag ?? undefined;
+  if (step === "selection") return enqueue(QUEUES.analyze, { articleId, selectionOnly: true },
+    { singletonKey: `selection:${articleId}`, priority: r.historical ? PRIORITY.history : PRIORITY.live, retryLimit: 0 }, opts.db);
   if (step === "extract") return enqueue(QUEUES.extractBody, { articleId }, { singletonKey: articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
   if (r.signal && !attemptTag) {
     return enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: groupingPriority(r) }, opts.db);
@@ -198,7 +203,13 @@ async function afterFailure(articleId: string, revision: number, error: unknown)
 }
 
 export async function registerContentJobs(boss: PgBoss) {
-  await work(boss, QUEUES.analyze, { localConcurrency: 6, pollingIntervalSeconds: 2 }, ({ articleId, attemptTag }) => processArticle(articleId, { attemptTag }));
+  await work(boss, QUEUES.analyze, { localConcurrency: 6, pollingIntervalSeconds: 2 }, async ({ articleId, attemptTag, selectionOnly }) => {
+    if (selectionOnly) {
+      const result = await reselectArticle(articleId);
+      return result ? { state: "reselected", ...result } : { state: "missing" };
+    }
+    return processArticle(articleId, { attemptTag });
+  });
 }
 
 /**

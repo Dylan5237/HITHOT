@@ -17,9 +17,10 @@ import { CATEGORIES } from "@aihot/industry/taxonomy";
 import { SELECTION } from "@aihot/industry/selection";
 import { ITEM_COPY } from "@aihot/site";
 import { sql } from "../db.ts";
-import { chatJson, MODELS, type ContentPart } from "../providers/llm.ts";
+import { chatJson, extractJson, MODELS, type ContentPart } from "../providers/llm.ts";
 import { completeReceipt, failedReceiptId, failureKind } from "../providers/receipts.ts";
 import { collapseWhitespace } from "../lib/text.ts";
+import { sha256 } from "../lib/ids.ts";
 import { modelFor, modelRoute, modelSupportsVision } from "./models.ts";
 import { buildMaterial, firstImagePart, loadAnalyzeInput, type AnalyzeInputArticle } from "./input.ts";
 import { pageFetchable } from "../content/extract.ts";
@@ -32,6 +33,7 @@ import {
 import { CATEGORY_GUIDE, CATEGORY_TAGS, ENTITIES, ENTITY_TAGS, ITEM_TYPES, normalizeTags, TOPIC_TAGS } from "./vocabulary.ts";
 import { promptText, promptVersion } from "./prompts.ts";
 import { originalPostCopy } from "../content/posts.ts";
+import { publishArticleTx } from "../publication/publish.ts";
 import { wordingProblems } from "./wording.ts";
 
 export { buildMaterial, loadAnalyzeInput, type AnalyzeInputArticle };
@@ -587,4 +589,100 @@ export async function analyzeArticle(articleId: string, opts: StepOpts = {}): Pr
   });
   const reused = (run.prefilter?.reused ?? true) && (run.scores?.reused ?? true) && (w?.reused ?? true) && (run.structure?.reused ?? true);
   return { analysisId: committed.analysisId, stale: committed.stale, output: out, receiptIds, reused };
+}
+
+/** Reapply today's tier threshold to the current revision's completed model judgement, without a provider request. */
+export async function reselectArticle(articleId: string): Promise<{ analysisId: number; selected: boolean } | null> {
+  const input = await loadAnalyzeInput(articleId);
+  if (!input) return null;
+  const userHash = sha256(buildScoreInput(input));
+  const systemHash = sha256(SCORE_SYSTEM);
+  const scoreModel = await modelFor("score");
+  const spec = MODELS[scoreModel];
+  return sql.begin(async (tx) => {
+    const [article] = await tx<{ revision: number; tier: string; participation_mode: string }[]>`
+      SELECT a.revision, s.tier, s.participation_mode FROM articles a JOIN sources s ON s.id = a.source_id
+      WHERE a.id = ${articleId} FOR UPDATE OF a`;
+    if (!article) return null;
+    if (article.revision !== input.revision) throw new Error(`Selection recheck: ${articleId} material revision changed`);
+    if (article.participation_mode !== "editorial") throw new Error(`Selection recheck: ${articleId} is not editorial`);
+    const threshold = tierThreshold(article.tier);
+    const [latest] = await tx<{ id: number; input_revision: number; origin: string; selected: boolean | null; output: Record<string, unknown> | null }[]>`
+      SELECT id, input_revision, origin, selected, output FROM analyses WHERE article_id = ${articleId}
+      ORDER BY input_revision DESC, id DESC LIMIT 1`;
+    if (!latest || latest.input_revision !== article.revision || !["model", "rule"].includes(latest.origin))
+      throw new Error(`Selection recheck: ${articleId} lacks a current model judgement`);
+    const [prior] = await tx<{
+      id: number; input_revision: number; origin: string; model: string | null; prompt_version: string | null;
+      receipt_ids: number[]; relevance: string | null; category: string | null; tags: string[]; subjects: string[];
+      title_zh: string | null; summary_zh: string | null; reason_zh: string | null;
+      score: string | null; output: Record<string, unknown> | null;
+    }[]>`
+      SELECT id, input_revision, origin, model, prompt_version, receipt_ids, relevance, category, tags, subjects,
+             title_zh, summary_zh, reason_zh, score, output
+      FROM analyses WHERE article_id = ${articleId} AND input_revision = ${article.revision} AND origin = 'model'
+      ORDER BY id DESC LIMIT 1`;
+    if (!prior || prior.input_revision !== article.revision || prior.prompt_version !== ANALYZE_PROMPT_VERSION)
+      throw new Error(`Selection recheck: ${articleId} lacks a current-prompt model analysis`);
+    if (latest.origin === "rule" && latest.output?.reselectedFrom !== prior.id)
+      throw new Error(`Selection recheck: ${articleId} has a newer unrelated judgement`);
+    const detail = prior.output;
+    if (!detail) throw new Error(`Selection recheck: ${articleId} lacks analysis output`);
+    const scoreable = prior.relevance === "pass" && threshold !== null && detail.scoreRefused !== true;
+    let selected = false;
+    if (scoreable) {
+      if (!spec) throw new Error(`Selection recheck: unknown score model ${scoreModel}`);
+      const scores = detail.scores;
+      if (detail.scoreModel !== scoreModel || !Array.isArray(scores)
+        || scores.length !== SCORE_CALLS || !scores.every((value) => Number.isInteger(value) && value >= 0 && value <= 100))
+        throw new Error(`Selection recheck: ${articleId} lacks two valid scores from the current model`);
+      const scoreIds = await tx<{
+        id: number; service: string; model: string | null; status: string; subject: string | null;
+        request: Record<string, unknown> | null; response: Record<string, unknown> | null;
+      }[]>`
+        SELECT id, service, model, status, subject, request, response FROM receipts
+        WHERE id = ANY(${prior.receipt_ids}) AND purpose = 'score_article'`;
+      if (scoreIds.length !== SCORE_CALLS || new Set(scoreIds.map((receipt) => String(receipt.id))).size !== SCORE_CALLS
+        || scoreIds.some((receipt) => receipt.service !== spec.service || receipt.model !== spec.model
+          || !["received", "completed"].includes(receipt.status)
+          || receipt.subject !== `article:${articleId}@${article.revision}`
+          || receipt.request?.promptVersion !== PROMPT_VERSIONS.score
+          || receipt.request?.userHash !== userHash || receipt.request?.systemHash !== systemHash))
+        throw new Error(`Selection recheck: ${articleId} lacks two matching completed score receipts`);
+      const order = prior.receipt_ids.map(String);
+      scoreIds.sort((a, b) => order.indexOf(String(a.id)) - order.indexOf(String(b.id)));
+      for (let i = 0; i < SCORE_CALLS; i++) {
+        const response = scoreIds[i]!.response as { choices?: Array<{ message?: { content?: unknown } }> } | null;
+        const content = response?.choices?.[0]?.message?.content;
+        let originalScore: number;
+        try {
+          if (typeof content !== "string") throw new Error("missing response content");
+          originalScore = ScoreSchema.parse(extractJson(content)).attentionScore;
+        } catch {
+          throw new Error(`Selection recheck: ${articleId} has an invalid original score response`);
+        }
+        if (originalScore !== scores[i]) throw new Error(`Selection recheck: ${articleId} score values differ from receipts`);
+      }
+      const sum = (scores as number[]).reduce((total, value) => total + value, 0);
+      if (Number(prior.score) !== Math.floor(sum / SCORE_CALLS))
+        throw new Error(`Selection recheck: ${articleId} score differs from its original values`);
+      selected = sum >= threshold * SCORE_CALLS;
+    }
+    const output = { ...detail, threshold: scoreable ? threshold : null, reselectedFrom: prior.id };
+    if (latest.origin === "rule" && latest.selected === selected && latest.output?.threshold === output.threshold) {
+      await tx`UPDATE articles SET processing_queued_at = NULL WHERE id = ${articleId} AND revision = ${article.revision}`;
+      return { analysisId: latest.id, selected };
+    }
+    const [row] = await tx<{ id: number }[]>`
+      INSERT INTO analyses (article_id, input_revision, origin, model, prompt_version, receipt_ids, relevance, category, tags,
+        subjects, title_zh, summary_zh, reason_zh, score, selected, output)
+      VALUES (${articleId}, ${article.revision}, 'rule', ${prior.model}, ${prior.prompt_version}, ${prior.receipt_ids},
+        ${prior.relevance}, ${prior.category}, ${prior.tags}, ${prior.subjects}, ${prior.title_zh}, ${prior.summary_zh},
+        ${prior.reason_zh}, ${prior.score}, ${selected}, ${tx.json(output as never)}) RETURNING id`;
+    await tx`UPDATE articles SET processing_state = ${prior.relevance === "block" ? "blocked" : "analyzed"},
+      processing_error = NULL, processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL
+      WHERE id = ${articleId} AND revision = ${article.revision}`;
+    await publishArticleTx(tx, articleId, { notifySelection: false });
+    return { analysisId: row!.id, selected };
+  });
 }

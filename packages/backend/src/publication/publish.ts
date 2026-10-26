@@ -108,6 +108,8 @@ export interface PublishOptions {
   now?: Date;
   /** Historical import: the item was already public, so it is released at its discovery time. */
   releasedAt?: Date | null;
+  /** Threshold-only rechecks can retain publication without scheduling a push or its media preparation. */
+  notifySelection?: boolean;
 }
 
 export interface PublishResult {
@@ -398,7 +400,7 @@ export async function publishArticleTx(tx: Tx, articleId: string, options: Publi
 
   // Content-group push: once, for an item that arrives live and becomes selected (never for imports,
   // backfill or stale-on-discovery material).
-  if (selected && !previous?.selected && !options.releasedAt && !article.backfill && visibility === "public") {
+  if (options.notifySelection !== false && selected && !previous?.selected && !options.releasedAt && !article.backfill && visibility === "public") {
     await enqueue(QUEUES.notifySelected, { articleId }, { singletonKey: `selected:${articleId}`, startAfter: new Date(now.getTime() + 5_000) }, tx);
     // Prepare its images alongside the newly confirmed selection.
     await enqueue(QUEUES.prepareMedia, { articleId }, { singletonKey: `media:${articleId}` }, tx);
