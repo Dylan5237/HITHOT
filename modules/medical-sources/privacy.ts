@@ -13,7 +13,7 @@ export function withoutContacts(text: string): string {
     .replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export const SOFTWARE = /HIS|电子病历|EMR|信息系统|信息化|平台|互联网医院|医保|数据中心|数据中台|智慧医院|互联互通|医疗大模型/i;
+export const SOFTWARE = /HIS|PACS|电子病历|EMR|信息系统|信息化|平台|互联网医院|医保|数据中心|数据中台|智慧医院|互联互通|医疗大模型/i;
 const BUYER = /医院|卫生健康|卫生院|卫健|医疗保障|医保局|疾控|疾病预防|妇幼|卫生服务中心/;
 const CORE_SOFTWARE = /HIS|电子病历|EMR|管理系统|业务系统|互联网医院|软件|数据中台|集成平台|信息平台/i;
 
@@ -32,7 +32,7 @@ export function procurementFacts(title: string, values: { buyer: string; provinc
   if (!BUYER.test(buyer) || !SOFTWARE.test(title + " " + text)) return null;
   if (/运维|维保|维护服务|耗材/.test(title) && !/建设|新建|改造|升级|开发/.test(title)) return null;
   if (/运维|耗材|硬件|服务器|设备采购|维保/.test(title) && !CORE_SOFTWARE.test(title)) return null;
-  const money = /([\d,.]+)\s*(亿元|万元|万|元)?/.exec(values.amount.replace(/[￥¥]/g, ""));
+  const money = /([\d,.]+)\s*[（(]?\s*(亿元|万元|万|元)?/.exec(values.amount.replace(/[￥¥]/g, ""));
   const amountRmb = money ? Number(money[1].replace(/,/g, "")) * (money[2] === "亿元" ? 1e8 : /万/.test(money[2] ?? "") ? 1e4 : 1) : 0;
   if (!Number.isFinite(amountRmb) || amountRmb <= 0) return null;
   const winners = values.winner.split(/[；;、，,\n]/).map(v => v.replace(/^(?:供应商名称|中标人|成交供应商|牵头人|成员)[：:]\s*/, "").trim())
@@ -40,6 +40,7 @@ export function procurementFacts(title: string, values: { buyer: string; provinc
     .filter(Boolean).slice(0, 12);
   if (!winners.length || !(amountRmb >= 5_000_000 || winners.some(v => keyVendor(v, title)))) return null;
   const productLine = /HIS|医院信息系统|医院管理系统/i.test(title) ? "HIS"
+    : /PACS/i.test(title) ? "PACS"
     : /电子病历|EMR/i.test(title) ? "电子病历"
     : /互联网医院/.test(title) ? "互联网医院"
     : /医保/.test(title) ? "医保信息化"

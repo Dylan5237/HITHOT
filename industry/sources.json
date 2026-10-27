@@ -2,6 +2,81 @@
   "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改和暂停。字段说明见 docs/customize.md；医疗信息化信源的选择与待补清单见 docs/medical-it.md。",
   "sources": [
     {
+      "id": "web-jiangmen-hospital",
+      "name": "江门市中心医院 本院动态",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.jmszxyy.com.cn/byjs/bydt/",
+        "itemSelector": "li",
+        "linkSelector": "a.fstyle1",
+        "publishedAtSelector": ".time",
+        "allowUrlPrefixes": ["https://www.jmszxyy.com.cn/byjs/bydt/"],
+        "_aihot": { "initialBackfillLimit": 8 }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["实践"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "web-scu-news",
+      "name": "四川大学新闻网",
+      "kind": "web_list",
+      "config": {
+        "url": "https://news.scu.edu.cn/",
+        "itemSelector": "li[data-aos]",
+        "linkSelector": "a",
+        "titleSelector": "h3",
+        "publishedAtSelector": "span",
+        "allowUrlPrefixes": ["https://news.scu.edu.cn/info/"],
+        "_aihot": { "initialBackfillLimit": 8 }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["实践"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "web-huimei-cases",
+      "name": "惠每科技 客户案例",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.huimei.com/cases/all-1",
+        "itemSelector": "li.newsList",
+        "linkSelector": "a.toDetailBtn",
+        "titleSelector": "h3",
+        "publishedAtSelector": "p.time",
+        "allowUrlPrefixes": ["https://www.huimei.com/casesDetails/"],
+        "_aihot": { "initialBackfillLimit": 8 }
+      },
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["实践", "产品"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "xian-hospital-results",
+      "name": "西安交大二附院 中标公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["行业"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
       "id": "govcn-nhc",
       "name": "国家卫健委（中国政府网部门文件）",
       "kind": "json_list",

@@ -1,6 +1,6 @@
 /** Public endpoints and issuer identities verified against the sources' own pages. */
 export interface MedicalSource {
-  id: string; name: string; adapter: "cninfo" | "winning" | "bsoft" | "dhcc" | "goodwill" | "ccgp" | "ggzy" | "ratings" | "hkex" | "unavailable";
+  id: string; name: string; adapter: "cninfo" | "winning" | "bsoft" | "dhcc" | "goodwill" | "ccgp" | "xian" | "ggzy" | "ratings" | "hkex" | "unavailable";
   url: string; code?: string; orgId?: string; column?: string; query?: string; unavailable?: string;
 }
 export const MEDICAL_SOURCES: readonly MedicalSource[] = [
@@ -10,6 +10,7 @@ export const MEDICAL_SOURCES: readonly MedicalSource[] = [
   { id: "cninfo-dhcc", name: "东华软件 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "002065", orgId: "9900000405", column: "szse" },
   { id: "cninfo-goodwill", name: "嘉和美康 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "688246", orgId: "nssc1000020", column: "sse" },
   { id: "web-winning-news", name: "卫宁健康 官网新闻", adapter: "winning", url: "https://www.winning.com.cn:81/api/news" },
+  { id: "xian-hospital-results", name: "西安交大二附院 中标公告", adapter: "xian", url: "https://www.xjefy.cn/defsyy/zbc/zbgg.htm" },
   { id: "web-bsoft-news", name: "创业慧康 官网新闻", adapter: "bsoft", url: "https://www.bsoft.com.cn/bsoft/newsInfo/getNewsList", unavailable: "Public endpoint returned an invalid HTTP status line (HPE_CR_EXPECTED) in both standard Node transports; no verified stable article permalink" },
   { id: "web-dhcc-news", name: "东华软件 官网新闻", adapter: "dhcc", url: "https://www.dhcc.com.cn/enterprise_news.html", unavailable: "robots.txt disallows all paths for User-agent: *; the Baiduspider exception is not used" },
   { id: "web-goodwill-news", name: "嘉和美康 官网新闻", adapter: "goodwill", url: "https://www.bjgoodwill.com/news.aspx?id=165", unavailable: "Public list contains old undated items; four detail pages expose no verifiable publication date, so a 60-day backfill cannot be established" },

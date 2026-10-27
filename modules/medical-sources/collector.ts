@@ -163,7 +163,8 @@ export function parseProcurement(html: string, url: string, title: string): Cand
     for (let i=0; i+1<cells.length; i+=2) values.set(collapseWhitespace($(cells[i]).text()), $(cells[i+1]).text().trim());
   });
   const main = $(".vF_detail_content").first().length ? $(".vF_detail_content").first()
-    : $(".TRS_Editor").first().length ? $(".TRS_Editor").first() : $("article").first();
+    : $(".TRS_Editor").first().length ? $(".TRS_Editor").first()
+    : $(".v_news_content").first().length ? $(".v_news_content").first() : $("article").first();
   main.find("p,div,br,li,tr").after("\n");
   const body = main.text();
   const cell = (re: RegExp) => [...values].find(([key]) => re.test(key))?.[1] ?? "";
@@ -173,9 +174,50 @@ export function parseProcurement(html: string, url: string, title: string): Cand
   const facts = procurementFacts(title, { buyer, province: cell(/^行政区域$/) || null, amount, winner, text: withoutContacts(body) });
   if (!facts) return null;
   const rawDate = $("meta[name='PubDate'],meta[name='pubdate'],meta[name='firstpublishedtime']").attr("content")
-    || cell(/^公告时间$/) || /\d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}:\d{2}/.exec($("body").text())?.[0];
+    || cell(/^公告时间$/) || /\d{4}-\d{1,2}-\d{1,2}/.exec($(".article-sm").first().text())?.[0]
+    || /\d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}:\d{2}/.exec($("body").text())?.[0];
   const date = dated(rawDate);
   return material(`procurement:${url}`, title, url, JSON.stringify({ 项目: title, 采购人: facts.buyer, 省份: facts.province, 金额人民币元: facts.amountRmb, 中标人: facts.winners, 产品线: facts.productLine }, null, 2), date, { procurement: facts });
+}
+
+async function xianResults(source: MedicalSource, report: SourceEvidence): Promise<Candidate[]> {
+  // The public listing currently spans many days per page; bound archive reads while following its next page.
+  report.window.from = addDays(report.window.to, -14);
+  const out: Candidate[] = [], pages = new Set<string>(), seen = new Set<string>();
+  const origin = new URL(source.url).origin;
+  let url: string | null = source.url;
+  while (url && !pages.has(url)) {
+    pages.add(url);
+    const response = await read(url, report), $ = cheerio.load(response.text());
+    const rows = $("ul.lb-list > li").toArray();
+    if (!rows.length) throw new Error("No procurement announcements matched the hospital listing");
+    for (const row of rows) {
+      const link = $(row).find("a[href]").first(), href = link.attr("href");
+      if (!href) continue;
+      const original = new URL(href, response.url);
+      if (original.origin !== origin || !original.pathname.startsWith("/defsyy/info/12831/") || seen.has(original.href)) continue;
+      seen.add(original.href); report.found++;
+      const title = collapseWhitespace(link.attr("title") || link.clone().find("span").remove().end().text());
+      const date = dated($(row).find("span").first().text());
+      if (!inWindow(date.publishedAt, report)) { report.skipped++; continue; }
+      if (!SOFTWARE.test(title) || !/中标|成交/.test(title) || /候选|预中标|拟成交|废标|流标|终止|更正|变更|取消/.test(title)) { report.skipped++; continue; }
+      try {
+        const detail = await read(original.href, report), candidate = parseProcurement(detail.text(), original.href, title);
+        if (candidate && inWindow(candidate.publishedAt, report)) out.push(candidate); else report.skipped++;
+        if (report.limit && out.length >= report.limit) return out;
+      } catch (error) {
+        report.errors.push({ url: original.href, error: String(error instanceof Error ? error.message : error) });
+        if (error instanceof CollectionDeniedError) throw error;
+      }
+    }
+    if (report.reachedWindowStart) break;
+    const next = $("a[href]").toArray().find(a => /^(?:下页|下一页)$/.test($(a).text().trim()));
+    const href = next ? $(next).attr("href") : null;
+    const target = href ? new URL(href, response.url) : null;
+    url = target && target.origin === origin && target.pathname.startsWith("/defsyy/zbc/zbgg/") ? target.href : null;
+    if (!url) report.reachedWindowStart = true;
+  }
+  return out;
 }
 
 async function ccgp(source: MedicalSource, report: SourceEvidence): Promise<Candidate[]> {
@@ -242,6 +284,7 @@ export async function previewMedicalSource(id: string, opts: { limit?: number } 
     else if (spec.adapter === "winning") candidates = await winning(spec,report);
     else if (spec.adapter === "dhcc" || spec.adapter === "goodwill") candidates = await companyHtml(spec,report);
     else if (spec.adapter === "ccgp") candidates = await ccgp(spec,report);
+    else if (spec.adapter === "xian") candidates = await xianResults(spec,report);
     else if (spec.adapter === "ratings") candidates = await ratings(spec,report);
     else throw new Error("A stable permitted public endpoint has not been verified");
   } catch (error) {
