@@ -13,22 +13,23 @@
 | `site/site.ts` | 站名 HITHOT、行业词“医疗信息化”（页面上显示为“医疗信息化日报”等）、首页标题、关键词、关于页文案、MCP 前缀 `hithot`、爬虫名 `HITHOTBot/1.0` |
 | `site/brand/` | 新图标（医疗十字 + 心电线），日报/周报/月报报头按新行业词重新生成 |
 | `industry/taxonomy.ts` | 7 个类别：政策、医疗AI、产品、实践、行业、研究、观点；分类标签、主题标签、机构与厂商名录、防张冠李戴词典；报头统计“N 份新政策” |
-| `industry/topics.json` | 36 个主题：14 个机构与厂商，14 个建设方向（电子病历、互联互通、智慧医院、医保信息化、医疗大模型……），8 个内容类型 |
-| `industry/sources.json` | 21 个示范信源（见下表），18 个启用。2026-10-19 在沙盒用项目自带的采集器实测；2026-10-20 又从部署服务器（阿里云乌兰察布机房 IP）逐个复测，FDA 与 MedCity 被反爬拦掉、雷峰网实测医疗信息化命中为 0，三个都改为默认停用 |
+| `industry/topics.json` | 机构与厂商、建设方向和内容类型主题；当前名单以配置文件为准 |
+| `industry/sources.json` | 信源初始化配置；新部署的默认值以该文件为准，已部署站点的启停状态以后台设置为准。历史试抓结果见下表 |
 | `industry/prompts/` | 预筛、评分标准、内容理解、结构化、术语规则、标题规则、摘要与翻译，全部换成医疗信息化的口径 |
 | `industry/wording.ts` | 禁止“重磅、炸裂、全面赋能”这类说法 |
 
 ## 评分标准的取舍
 
-评分保留了原框架的结构：七种内容类型 × 五个维度加权、噪声压制、安全边界。改的是“什么算重要”：
+v3 评分结合内容类型和行业影响、行动紧迫性、需求规模、证据充分性、软件相关性五个维度判断，按分档给出总分；具体标准以 `industry/prompts/selection-score.md` 为准。
 
-- **加分**：国家层面的政策与征求意见稿；电子病历、互联互通、智慧服务等评级规则与名单；DRG/DIP 与医保信息平台的变化；AI 医疗器械获批；有规模和数据的建设实践；主要厂商的重大经营变化；安全事故；高质量的医疗 AI 研究。
-- **压分**：厂商的“签约、赋能、打造标杆”通稿；单家医院的宣传稿和领导调研；会议、展会、培训、评奖；与信息化关系弱的部委文件；例行招标；只说“接入了大模型”的产品稿。
-- 七种类型的权重见 `industry/prompts/selection-score.md`；类型列表同时写在 `industry/taxonomy.ts` 的 `ITEM_TYPES` 里，两处要一起改。
+- **重点关注**：直接产生系统建设或改造需求的政策和标准；重点厂商重大经营事件；较大规模的医疗信息化项目中标；有具体功能、架构或成效的医院建设实践。
+- **压制噪声**：缺少实质信息的活动和宣传稿、与软件相关性弱的内容、纯硬件或运维采购、学术论文等；同一事件优先保留信息更完整的报道。
 
-入选门槛（`industry/selection.ts`）2026-10-22 **暂时下调**为 T1 58、T1_5 60、T2 62（原框架按 AI 行业校准的是 60 / 65 / 76；上线后两周只入选 3 条，按已有资料模拟，下调后约 9 条）。这是临时值，仍要用你自己标注的样本重新校准，见下文。
+当前 T1、T1_5 和 T2 的入选门槛均为 59，代码以 `industry/selection.ts` 为准。2026-10-26 的自动化校准依据、样本覆盖局限和人工验收状态见 [内容分类与评分](hithot-content.md)。
 
-## 示范信源
+## 2026-10-19 至 2026-10-23 的信源试抓记录
+
+下表保留当时的试抓结果，不是当前启用清单；当前配置与已部署站点的状态分别以 `industry/sources.json` 和后台为准。
 
 | 信源 | 类型 | 分级 | 说明 |
 |---|---|---|---|
@@ -74,10 +75,10 @@
 ## 需要你自己决定的事
 
 1. **站名**：现在是 HITHOT，改 `site/site.ts` 的 `name` 和 `organization.name`。不能用 AIHOT 的名字和 Logo。
-2. **信源**：上面这份是起点，要按你实际要盯的地区、厂商和公众号补齐。
+2. **信源**：以 `industry/sources.json` 和后台实际设置为准，再决定要追踪的地区、厂商和其他来源。
 3. **分类**：7 个类别的 key（`policy`、`med-ai`、`products`、`practice`、`industry`、`research`、`opinion`）会出现在网址和 RSS 地址里，上线后不能再改。
-4. **门槛校准**：从信源里挑 100–200 条资料，自己标“该选 / 不该选”，存成 `.data/gold.jsonl`（格式见 `industry/gold.example.jsonl`），运行 `node --env-file=.env scripts/eval-selection.ts --gold .data/gold.jsonl`，按结果调评分提示词和 `industry/selection.ts`。
-5. **条款与隐私说明**：`site/pages/terms.md`、`privacy.md` 仍是模板，上线前要改。
+4. **门槛复核**：现有 59 分门槛及其自动化校准局限见 [内容分类与评分](hithot-content.md)；新增样本或人工标注后，可按 [精选与校准](selection.md) 重新评估。
+5. **条款与隐私说明**：核对 `site/pages/terms.md`、`privacy.md` 与实际运营、数据处理方式是否一致；修改内容需由站长确认。
 6. **备案**：放在中国大陆的话，在 `site/site.ts` 填 `icp`、`psb`。
 
 ## 跑起来
@@ -89,7 +90,7 @@ docker compose up -d --build
 
 打开 http://localhost:3000，后台在 `/admin`（密码在 `.env` 的 `ADMIN_PASSWORD`）。部署到服务器、配置域名与 HTTPS 见 `docs/deploy.md`。
 
-## 验证记录
+## 历史验证记录
 
 - 正文提取修复（2026-10-20）：gov.cn 政策页在 `<body>` 里夹了一个页头片段自带的 `</html>`，linkedom 把正文留在文档外，Readability 抛 TypeError，被抓取路径吞掉后误报成 `JINA_API_KEY is not configured`；修好后又发现页面同时有电脑版和手机版两份正文，读出来会翻倍。见 `packages/backend/src/lib/page-content.ts`、`content/extract.ts` 和 `tests/malformed-html-extraction.test.ts`。
 
