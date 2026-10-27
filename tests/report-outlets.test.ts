@@ -119,6 +119,43 @@ test('a daily citation without a frozen summary, and a flash with an earlier fro
   assert.equal(v1.flashes[0]!.publishedAt, site.flashes[0]!.publishedAt);
 });
 
+test('daily RSS includes public flashes and Agent preserves the source date precision', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-30T04:00:00Z') });
+  const dateOnly = await citation('Date-only supplement');
+  const midnight = await citation('Real midnight flash');
+  const withdrawn = await citation('Withdrawn flash');
+  const pending = await citation('Unreleased flash');
+  const at = new Date('2026-09-29T16:00:00Z');
+  await sql`UPDATE articles SET publication_time = CASE WHEN id = ${dateOnly.itemId} THEN '2026-09-30' ELSE '2026-09-30T00:00:00+08:00' END
+    WHERE id IN ${sql([dateOnly.itemId, midnight.itemId])}`;
+  await sql`UPDATE publications SET published_at = ${at} WHERE article_id IN ${sql([dateOnly.itemId, midnight.itemId])}`;
+  await sql`UPDATE publications SET visibility = 'withdrawn' WHERE article_id = ${withdrawn.itemId}`;
+  await sql`UPDATE publications SET visible_after = '2100-01-01' WHERE article_id = ${pending.itemId}`;
+  const key = '2096-01-05';
+  await issue('daily', key, { sections: [], flashes: [dateOnly, midnight, withdrawn, pending] });
+  const outlets = await dailyOutlets(key);
+  const flashes = outlets.feed.sections.find(s => s.label === '快讯')!;
+  assert.deepEqual(flashes.items.map(i => i.title), [dateOnly.title, midnight.title]);
+  const rss = await app.inject('/feed/daily.xml');
+  assert.equal(rss.statusCode, 200);
+  assert.ok(rss.body.includes(dateOnly.itemId) && rss.body.includes(midnight.itemId));
+  assert.ok(!rss.body.includes(withdrawn.itemId) && !rss.body.includes(pending.itemId));
+  const line = (title: string) => outlets.agent.split('\n').find(s => s.includes(title))!;
+  assert.match(line(dateOnly.title), /09-30（仅日期）/);
+  assert.doesNotMatch(line(dateOnly.title), /00:00/);
+  assert.match(line(midnight.title), /09-30 00:00/, 'a source with a real midnight keeps its time');
+  assert.ok(!outlets.agent.includes(withdrawn.title) && !outlets.agent.includes(pending.title));
+  for (const url of ['/api/v1/agent/latest?window=7d&limit=30', '/api/v1/agent/search?q=Date-only%20supplement']) {
+    const answer = await app.inject(url);
+    assert.equal(answer.statusCode, 200, url);
+    const lines = answer.body.split('\n');
+    const index = lines.findIndex(s => s.includes(dateOnly.itemId));
+    assert.ok(index >= 0, url);
+    assert.match(lines[index + 1]!, /09-30（仅日期）/, url);
+    assert.doesNotMatch(lines[index + 1]!, /00:00/, url);
+  }
+});
+
 test('discovery counts exactly the publicly indexed topics it lists', () => {
   const text = llmsTxt({ hasDailies: false, hasWeekly: false, hasMonthly: false, topics: [{ slug: 'sample', name: 'Example', definition: 'Example topic' }], tools: [],
     modules: { api: [], pace: [], pages: [], topics: [], access: [], usage: [], guideClients: [], ways: [] } });

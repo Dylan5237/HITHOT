@@ -4,7 +4,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { PUBLIC_API_CATEGORY_KEYS, type PublicApiCategoryKey } from "@aihot/contracts/taxonomy";
 import { isValidDate } from "@aihot/contracts/time";
-import { agentGuide, dailyAnswer, hotAnswer, latestAnswer, periodAnswer, searchAnswer, searchItems, storyAnswer } from "@aihot/backend/publication/agent";
+import { agentGuide, dailyAnswer, dateOnlyForHotTopics, dateOnlyForItems, hotAnswer, latestAnswer, periodAnswer, searchAnswer, searchItems, storyAnswer } from "@aihot/backend/publication/agent";
 import { v1Items } from "@aihot/backend/publication/v1";
 import { resolveStory, v1HotTopics, v1Story } from "@aihot/backend/publication/stories";
 import { dailyWithNotes, isPeriodKey, v1Period } from "@aihot/backend/publication/reports";
@@ -38,7 +38,7 @@ export function registerAgent(app: FastifyInstance) {
     const q = strictQuery(req, ["window", "mode", "category", "limit"]);
     const p = { ...listParams(q), mode: enumParam(q.mode, "mode", ["selected", "all"] as const, "selected") };
     const res = await v1Items({ ...p, by: "timeline", q: null, cursor: null });
-    return markdown(req, reply, latestAnswer(res, p), "agent-latest", V1_OPERATIONS.items.cacheControl);
+    return markdown(req, reply, latestAnswer(res, p, await dateOnlyForItems(res.items.map(i => i.id))), "agent-latest", V1_OPERATIONS.items.cacheControl);
   }));
 
   app.get("/api/v1/agent/search", publicHandler(async (req, reply) => {
@@ -47,12 +47,14 @@ export function registerAgent(app: FastifyInstance) {
     if ([...text].length < 2 || [...text].length > 200) throw new QueryError("q must contain 2 to 200 characters.");
     const p = { ...listParams(q), window: enumParam(q.window, "window", ["24h", "7d"] as const, "7d") };
     const found = await searchItems(text, p.window, p.category, p.limit);
-    return markdown(req, reply, searchAnswer(found, { q: text, window: p.window, category: p.category }), "agent-search", V1_OPERATIONS.items.cacheControl);
+    return markdown(req, reply, searchAnswer(found, { q: text, window: p.window, category: p.category }, await dateOnlyForItems(found.res.items.map(i => i.id))), "agent-search", V1_OPERATIONS.items.cacheControl);
   }));
 
   app.get("/api/v1/agent/hot", publicHandler(async (req, reply) => {
     const q = strictQuery(req, ["limit"]);
-    return markdown(req, reply, hotAnswer(await v1HotTopics(), intParam(q.limit, "limit", 1, 10, 10), "http"), "agent-hot", V1_OPERATIONS.hotTopics.cacheControl);
+    const limit = intParam(q.limit, "limit", 1, 10, 10);
+    const topics = await v1HotTopics();
+    return markdown(req, reply, hotAnswer(topics, limit, "http", await dateOnlyForHotTopics(topics.items.slice(0, limit))), "agent-hot", V1_OPERATIONS.hotTopics.cacheControl);
   }));
 
   app.get("/api/v1/agent/stories/:publicId", publicHandler(async (req, reply) => {
@@ -64,7 +66,7 @@ export function registerAgent(app: FastifyInstance) {
     if (found.kind === "merged") found = await resolveStory(found.target);
     const body = found.kind === "found" ? await v1Story(found.storyId) : null;
     if (!body) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "没有这个公开事件。只使用热点结果里给出的「来龙去脉」地址，不要猜。", cacheControl: "public, max-age=60" });
-    return markdown(req, reply, storyAnswer(body.story, limit, "http"), "agent-story", V1_OPERATIONS.storyByPublicId.cacheControl);
+    return markdown(req, reply, storyAnswer(body.story, limit, "http", await dateOnlyForItems(body.story.reports.map(r => r.id))), "agent-story", V1_OPERATIONS.storyByPublicId.cacheControl);
   }));
 
   app.get("/api/v1/agent/daily", publicHandler(async (req, reply) => {

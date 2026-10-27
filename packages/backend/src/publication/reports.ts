@@ -30,15 +30,16 @@ interface Availability {
   sourceName: string | null;
   sourceIcon: string | null;
   publishedAt: Date | null;
+  publicationTime: string | null;
 }
 
 async function availability(ids: string[]): Promise<Map<string, Availability>> {
   const out = new Map<string, Availability>();
   if (ids.length === 0) return out;
-  const rows = await sql<{ id: string; available: boolean; summary: string | null; first_party: boolean; source_id: string; source_name: string | null; icon_url: string | null; at: Date | null }[]>`
+  const rows = await sql<{ id: string; available: boolean; summary: string | null; first_party: boolean; source_id: string; source_name: string | null; icon_url: string | null; at: Date | null; publication_time: string | null }[]>`
     SELECT p.article_id AS id, (${listedCondition(new Date())}) AS available, p.summary, (s.tier = 'T1') AS first_party, p.source_id, s.name AS source_name, s.icon_url,
-      coalesce(p.published_at, p.discovered_at) AS at
-    FROM publications p LEFT JOIN sources s ON s.id = p.source_id
+      coalesce(p.published_at, p.discovered_at) AS at, CASE WHEN p.published_at IS NOT NULL THEN a.publication_time END AS publication_time
+    FROM publications p LEFT JOIN sources s ON s.id = p.source_id LEFT JOIN articles a ON a.id = p.article_id
     WHERE p.article_id IN ${sql(ids)}`;
   for (const r of rows) {
     out.set(r.id, {
@@ -49,6 +50,7 @@ async function availability(ids: string[]): Promise<Map<string, Availability>> {
       sourceName: r.source_name,
       sourceIcon: r.icon_url,
       publishedAt: r.at,
+      publicationTime: r.publication_time,
     });
   }
   return out;
@@ -454,6 +456,7 @@ export interface DailyNote {
   otherSources: number;
   related: Array<{ title: string; link: string }>;
   followUp: string | null;
+  publicationDateOnly?: string;
 }
 
 /** The v1 daily (its fields never change) and the notes the Agent answer adds to it. */
@@ -474,7 +477,10 @@ export async function dailyWithNotes(date: string | "latest") {
   for (const i of raw.filter(ok)) {
     const related = (i.related ?? []).filter((x: any) => x.itemId && ok(x)).map((x: any) => ({ title: String(x.title), link: itemUrl(x.itemId) }));
     const otherSources = Number(i.sources) > 1 ? Number(i.sources) - 1 : 0;
-    if (otherSources || related.length || i.followUp) notes.set(links(i).aihot ?? links(i).original, { otherSources, related, followUp: i.followUp ?? null });
+    const publicationTime = i.itemId ? avail.get(i.itemId)?.publicationTime : null;
+    const publicationDateOnly = publicationTime && /^\d{4}-\d{2}-\d{2}$/.test(publicationTime) ? publicationTime : undefined;
+    if (otherSources || related.length || i.followUp || publicationDateOnly) notes.set(links(i).aihot ?? links(i).original,
+      { otherSources, related, followUp: i.followUp ?? null, ...(publicationDateOnly ? { publicationDateOnly } : {}) });
   }
   const body = {
     schemaVersion: 1 as const,
@@ -524,6 +530,7 @@ export interface FeedIssue {
 /**
  * The newest issues of a kind for its RSS feed: headline, lead paragraph (a weekly's or monthly's
  * overview) and each section's entry titles with their links on this site, withdrawn ones left out.
+ * A daily's flashes follow its sections, just as on the website.
  */
 export async function feedIssues(kind: ReportKind, limit: number): Promise<FeedIssue[]> {
   const rows = kind === "daily"
@@ -533,7 +540,9 @@ export async function feedIssues(kind: ReportKind, limit: number): Promise<FeedI
         'sections', (SELECT coalesce(jsonb_agg(jsonb_build_object('label', s->'label', 'items',
           (SELECT coalesce(jsonb_agg(jsonb_build_object('itemId', i->'itemId', 'title', i->'title') ORDER BY ord), '[]'::jsonb)
            FROM jsonb_array_elements(coalesce(s->'items', '[]'::jsonb)) WITH ORDINALITY AS e(i, ord))) ORDER BY sord), '[]'::jsonb)
-          FROM jsonb_array_elements(coalesce(content->'sections', '[]'::jsonb)) WITH ORDINALITY AS x(s, sord))) AS content
+          FROM jsonb_array_elements(coalesce(content->'sections', '[]'::jsonb)) WITH ORDINALITY AS x(s, sord)),
+        'flashes', (SELECT coalesce(jsonb_agg(jsonb_build_object('itemId', i->'itemId', 'title', i->'title') ORDER BY ord), '[]'::jsonb)
+          FROM jsonb_array_elements(coalesce(content->'flashes', '[]'::jsonb)) WITH ORDINALITY AS e(i, ord))) AS content
       FROM reports WHERE kind = 'daily' ORDER BY key DESC LIMIT ${limit}`
     : await sql<{ key: string; generated_at: Date; content: Record<string, any> }[]>`
       SELECT key, generated_at, jsonb_build_object(
@@ -545,12 +554,12 @@ export async function feedIssues(kind: ReportKind, limit: number): Promise<FeedI
           FROM jsonb_array_elements(coalesce(content->'themes', '[]'::jsonb)) WITH ORDINALITY AS x(t, tord))) AS content
       FROM reports WHERE kind = ${kind} ORDER BY key DESC LIMIT ${limit}`;
   const shape = kind === "daily" ? "daily" : "periodic";
-  const gone = await unavailableIds(rows.flatMap((r) => entriesOf(r.content, shape).map((i) => i.itemId)));
+  const gone = await unavailableIds(rows.flatMap((r) => [...entriesOf(r.content, shape), ...(r.content.flashes ?? [])].map((i: any) => i.itemId)));
   const leads = kind === "daily" ? await dailyLeads(rows, gone) : null;
   return rows.map((r) => {
     const lead = leads ? leads.get(r.key) : issueLead(r.content, shape, gone);
     const groups: Array<{ label: unknown; items?: Array<Record<string, any>> }> = kind === "daily"
-      ? (r.content.sections ?? []).map((s: any) => ({ label: s.label, items: s.items }))
+      ? [...(r.content.sections ?? []).map((s: any) => ({ label: s.label, items: s.items })), { label: "快讯", items: r.content.flashes ?? [] }]
       : (r.content.themes ?? []).map((t: any) => ({ label: t.heading, items: t.storyRefs }));
     return {
       key: r.key,

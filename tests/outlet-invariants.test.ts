@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { MCP_TOOL_NAMES } from "@aihot/contracts/mcp";
+import { beijingAt, beijingDate } from "@aihot/contracts/time";
 import { closeDb, sql } from "@aihot/backend/db";
 import { upsertMaterial } from "@aihot/backend/content/materials";
 import { setSeoIndexed } from "@aihot/backend/admin/content";
@@ -53,6 +54,9 @@ test("every search matches the source name readers see and excludes its internal
   const visible = `Visible${key}`;
   const internal = `Internal${key}`;
   const id = await fixture(`${visible}（${internal}）`);
+  const date = beijingDate(Date.now() - 60_000);
+  await sql`UPDATE articles SET publication_time=${date} WHERE id=${id}`;
+  await sql`UPDATE publications SET published_at=${beijingAt(date, '00:00')} WHERE article_id=${id}`;
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
   const client = new Client({ name: "outlet-search", version: "1.0.0" });
   await client.connect(new StreamableHTTPClientTransport(new URL(`${address}/api/mcp`)));
@@ -62,10 +66,12 @@ test("every search matches the source name readers see and excludes its internal
         const res = await app.inject(`${prefix}${encodeURIComponent(query)}`);
         assert.equal(res.statusCode, 200, prefix);
         assert.equal(res.body.includes(id), expected, `${prefix}${query}`);
+        if (expected && prefix === "/api/v1/agent/search?q=") assert.ok(res.body.includes(`${date.slice(5)}（仅日期）`));
       }
       const result = await client.callTool({ name: MCP_TOOL_NAMES.search, arguments: { q: query } });
       assert.equal(result.isError, undefined);
       assert.equal(JSON.stringify(result.structuredContent).includes(id), expected, `MCP ${query}`);
+      if (expected) assert.ok(JSON.stringify(result.content).includes(`${date.slice(5)}（仅日期）`), 'MCP text retains date precision');
     }
   } finally { await client.close(); }
 });

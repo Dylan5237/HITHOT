@@ -14,7 +14,7 @@ import { isValidDate } from "@aihot/contracts/time";
 import { config } from "@aihot/backend/config";
 import { cachedByKey } from "@aihot/backend/lib/cache";
 import { logError } from "@aihot/backend/lib/log-error";
-import { dailyAnswer, hotAnswer, latestAnswer, periodAnswer, searchAnswer, searchItems, storyAnswer } from "@aihot/backend/publication/agent";
+import { dailyAnswer, dateOnlyForHotTopics, dateOnlyForItems, hotAnswer, latestAnswer, periodAnswer, searchAnswer, searchItems, storyAnswer } from "@aihot/backend/publication/agent";
 import { v1Items } from "@aihot/backend/publication/v1";
 import { SearchBusyError } from "@aihot/backend/publication/pool";
 import { resolveStory, v1HotTopics, v1Story } from "@aihot/backend/publication/stories";
@@ -137,7 +137,7 @@ function registerTools(server: McpServer, say: typeof ok) {
     safe(T.latest, async (args) => {
       const query = { mode: args.mode, window: args.window, by: "timeline", category: args.category ?? null, q: null, limit: args.limit, cursor: null } as const;
       const res = await recent(`items:${JSON.stringify(query)}`, () => v1Items(query));
-      return say(latestAnswer(res, { window: args.window, mode: args.mode, category: args.category ?? null, limit: args.limit }), { schemaVersion: 1, query: res.query, items: res.items });
+      return say(latestAnswer(res, { window: args.window, mode: args.mode, category: args.category ?? null, limit: args.limit }, await dateOnlyForItems(res.items.map(i => i.id))), { schemaVersion: 1, query: res.query, items: res.items });
     }),
   );
 
@@ -153,7 +153,7 @@ function registerTools(server: McpServer, say: typeof ok) {
       if (q.includes("\0")) return fail("invalid_request", "搜索词不能包含 NUL 字符。");
       if ([...q].length < 2) return fail("invalid_request", "搜索词需要 2 到 200 个字符。");
       const found = await searchItems(q, args.window, args.category ?? null, args.limit, (query) => recent(`items:${JSON.stringify(query)}`, () => v1Items(query)));
-      return say(searchAnswer(found, { q, window: args.window, category: args.category ?? null }), { schemaVersion: 1, query: found.res.query, items: found.res.items });
+      return say(searchAnswer(found, { q, window: args.window, category: args.category ?? null }, await dateOnlyForItems(found.res.items.map(i => i.id))), { schemaVersion: 1, query: found.res.query, items: found.res.items });
     }),
   );
 
@@ -167,7 +167,7 @@ function registerTools(server: McpServer, say: typeof ok) {
     safe(T.hot, async (args) => {
       const all = await recent("hot", () => v1HotTopics());
       const items = all.items.slice(0, args.limit);
-      return say(hotAnswer(all, args.limit, "mcp"), { schemaVersion: 1, count: items.length, items });
+      return say(hotAnswer(all, args.limit, "mcp", await dateOnlyForHotTopics(items)), { schemaVersion: 1, count: items.length, items });
     }),
   );
 
@@ -184,7 +184,7 @@ function registerTools(server: McpServer, say: typeof ok) {
       const body = found.kind === "found" ? await v1Story(found.storyId) : null;
       if (!body) return fail("not_found", `没有这个公开事件；只使用 ${T.hot} 返回的 public_id。`);
       const story = { ...body.story, reports: body.story.reports.slice(0, args.report_limit) };
-      return say(storyAnswer(body.story, args.report_limit, "mcp"), { schemaVersion: 1, story });
+      return say(storyAnswer(body.story, args.report_limit, "mcp", await dateOnlyForItems(body.story.reports.map(r => r.id))), { schemaVersion: 1, story });
     }),
   );
 

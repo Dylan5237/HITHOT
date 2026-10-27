@@ -69,6 +69,37 @@ test("automatic retries preserve all three published issue kinds; explicit corre
   }
 });
 
+test("regenerating a daily keeps editor supplements once without changing the day's event count", async () => {
+  const date = "2024-02-02";
+  const ids = await Promise.all([item(date), item(date), item(date)]);
+  await composeDaily(date);
+  const first = await report("daily", date);
+  const mainIds = first.content.sections.flatMap((s: any) => s.items.map((i: any) => i.itemId));
+  const automaticFlash = first.content.flashes[0];
+  assert.equal(mainIds.length, 2);
+  assert.ok(automaticFlash, 'the third item from one source becomes a flash');
+  const supplements = [
+    { ...automaticFlash, title: 'Editor supplement for automatic flash' },
+    { itemId: mainIds[0], title: 'Editor supplement already in main' },
+    { itemId: `historical-${tag()}`, title: 'Historical editor supplement', sourceUrl: 'https://example.com/historical' },
+  ];
+  await sql`UPDATE reports SET content = content || ${sql.json({ supplements })}::jsonb WHERE kind = 'daily' AND key = ${date}`;
+  const saved = await report("daily", date);
+  for (const expectedRevision of [2, 3]) {
+    await composeDaily(date, 'editor correction');
+    const regenerated = await report("daily", date);
+    assert.equal(regenerated.revision, expectedRevision);
+    assert.deepEqual(regenerated.content.supplements, supplements, 'all curated entries survive, including a duplicate of the main');
+    assert.equal(regenerated.content.metrics.totalEvents, 2, 'the supplement does not become a new window event');
+    assert.deepEqual(regenerated.content.flashes.map((e: any) => e.itemId), [automaticFlash.itemId, supplements[2]!.itemId]);
+    assert.equal(regenerated.content.flashes[0].title, supplements[0]!.title, 'curated wording wins over an automatic flash');
+  }
+  const [revision] = await sql`SELECT v.content FROM report_revisions v JOIN reports r ON r.id = v.report_id
+    WHERE r.kind = 'daily' AND r.key = ${date} AND v.revision = 1`;
+  assert.deepEqual(revision.content, saved.content, 'the original version remains in revision history');
+  assert.equal(new Set(ids).size, 3);
+});
+
 test("report publication and its receipt commit together and recovery reuses the response", async () => {
   await item("2024-05-02");
   await composeDaily("2024-05-02");

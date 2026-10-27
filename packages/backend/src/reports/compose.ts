@@ -38,6 +38,21 @@ export function dailyMetrics(main: EditionEntry[]) {
 
 type ReportKind = "daily" | "weekly" | "monthly";
 
+/** Keep editor-added references across regeneration without counting them as new events in the window. */
+function retainDailySupplements(next: Record<string, any>, previous: Record<string, any>): Record<string, unknown> {
+  const supplements = Array.isArray(previous.supplements) ? previous.supplements : [];
+  if (!supplements.length) return next;
+  const main = new Set((next.sections ?? []).flatMap((s: any) => (s.items ?? []).map((i: any) => i.itemId)));
+  const supplementIds = new Set(supplements.map((i: any) => i.itemId).filter(Boolean));
+  const seen = new Set(main);
+  const visible = supplements.filter((i: any) => {
+    if (!i.itemId || seen.has(i.itemId)) return false;
+    seen.add(i.itemId);
+    return true;
+  });
+  return { ...next, supplements, flashes: [...(next.flashes ?? []).filter((i: any) => !supplementIds.has(i.itemId)), ...visible] };
+}
+
 /** How many events an issue already published carries; nothing when it does not exist yet. */
 async function savedReport(kind: ReportKind, key: string) {
   const [row] = await sql<{ entries: number }[]>`
@@ -58,12 +73,13 @@ async function saveReport(kind: ReportKind, key: string, start: Date, end: Date,
     let written: boolean;
     if (reason === undefined) written = await insert();
     else {
-      const [existing] = await tx<{ id: number; revision: number; content: unknown; generated_at: Date }[]>`
+      const [existing] = await tx<{ id: number; revision: number; content: Record<string, any>; generated_at: Date }[]>`
         SELECT id, revision, content, generated_at FROM reports WHERE kind = ${kind} AND key = ${key} FOR UPDATE`;
       if (existing) {
         await tx`INSERT INTO report_revisions (report_id, revision, content, generated_at, reason)
                  VALUES (${existing.id}, ${existing.revision}, ${tx.json(existing.content as never)}, ${existing.generated_at}, ${reason}) ON CONFLICT DO NOTHING`;
-        await tx`UPDATE reports SET content = ${tx.json(content as never)}, window_start = ${start}, window_end = ${end}, generated_at = now(),
+        const updated = kind === "daily" ? retainDailySupplements(content, existing.content) : content;
+        await tx`UPDATE reports SET content = ${tx.json(updated as never)}, window_start = ${start}, window_end = ${end}, generated_at = now(),
                    model = ${model}, revision = revision + 1, origin = 'model', updated_at = now() WHERE id = ${existing.id}`;
         written = true;
       } else written = await insert();

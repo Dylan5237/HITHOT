@@ -5,6 +5,7 @@
 import { tag } from "./setup.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { beijingAt, beijingDate } from "@aihot/contracts/time";
 import * as cheerio from "cheerio";
 import { marked } from "marked";
 import { after, before, test } from "node:test";
@@ -244,6 +245,19 @@ test("a withdrawn item leaves every report exit", async () => {
   assert.ok(!list.body.includes(`LEAD-${T}`), "/api/v1/dailies headlines the withdrawn title");
 });
 
+test("Agent event timelines do not invent a midnight for a date-only source", async () => {
+  const id = await article();
+  await publishArticle(id, released());
+  await sql`UPDATE articles SET publication_time='2026-09-30' WHERE id=${id}`;
+  await sql`UPDATE publications SET published_at='2026-09-29T16:00:00Z' WHERE article_id=${id}`;
+  const story = await storyFor(id);
+  const answer = await get(`/api/v1/agent/stories/${story}`);
+  assert.equal(answer.status, 200);
+  const lines = answer.body.split('\n').filter(line => line.includes('09-30'));
+  assert.equal(lines.length, 3, 'first report, latest development and timeline');
+  assert.ok(lines.every(line => line.includes('（仅日期）') && !line.includes('00:00')));
+});
+
 test("story changes refresh share images and a withdrawal takes down only the stories citing it", async () => {
   const id = await article();
   await publishArticle(id, released());
@@ -291,12 +305,16 @@ test("a withdrawn item leaves the hot board and the hot APIs at once, not at the
   // Two independent participants (heat counts sources, not reports).
   const second = `${SOURCE}-hot-b`;
   await sql`INSERT INTO sources (id, name, kind, tier, participation_mode, next_fetch_at) VALUES (${second}, 'Test publication B', 'rss', 'T1', 'editorial', '2100-01-01')`;
-  for (const [i, id] of [await article(), await article()].entries()) {
+  const ids = [await article(), await article()];
+  const date = beijingDate(Date.now() - 60_000);
+  for (const [i, id] of ids.entries()) {
     if (i) await sql`UPDATE articles SET source_id = ${second} WHERE id = ${id}`;
     await sql`INSERT INTO fact_articles (fact_id, article_id, role) VALUES (${fact!.id}, ${id}, 'report')`;
     await sql`INSERT INTO story_signals (story_id, article_id, participant_key, source_id, kind, observed_at)
               VALUES (${story!.id}, ${id}, ${`participant-${id}`}, ${i ? second : SOURCE}, 'editorial', now() - interval '1 hour')`;
     await publishArticle(id, released());
+    await sql`UPDATE articles SET publication_time=${date} WHERE id=${id}`;
+    await sql`UPDATE publications SET published_at=${beijingAt(date, '00:00')} WHERE article_id=${id}`;
   }
   await computeHotRanking();
   const rep = (await latestHotRanking())!.entries.find((e) => e.storyId === story!.id)?.representativeItemId;
@@ -304,6 +322,11 @@ test("a withdrawn item leaves the hot board and the hot APIs at once, not at the
   // The machine exits name the item; the hot board names the event it stands for.
   const exits = ["/api/v1/hot-topics", "/api/v1/agent/hot?limit=3"];
   for (const url of exits) assert.ok((await get(url)).body.includes(rep!), `${url} shows the item before`);
+  const onlyDate = (await get(exits[1]!)).body;
+  assert.ok(onlyDate.includes(`${date.slice(5)}（仅日期）`), 'hot topic uses the precision of its latest evidence');
+  await sql`UPDATE articles SET publication_time=${`${date}T00:00:00+08:00`} WHERE id=${ids[1]!}`;
+  const mixedPrecision = (await get(exits[1]!)).body;
+  assert.ok(mixedPrecision.includes(`${date.slice(5)} 00:00`), 'a genuinely timed latest report is not reduced to a date');
   assert.ok((await get("/api/site/hot")).body.includes(publicId), "/api/site/hot shows the event before");
 
   await setVisibility(rep!, { visibility: "withdrawn", reason: "test", version: 0 }, "test");

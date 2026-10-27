@@ -7,11 +7,13 @@ import { CATEGORIES } from "@aihot/industry/taxonomy";
 import { MCP_TOOL_NAMES as T } from "@aihot/contracts/mcp";
 import { CATEGORY_LABELS, isCategoryKey, PUBLIC_API_CATEGORY_KEYS, toPublicApiCategory, type PublicApiCategoryKey } from "@aihot/contracts/taxonomy";
 import { beijingDate, beijingTime, beijingWeekday } from "@aihot/contracts/time";
+import { sql } from "../db.ts";
 import { serverModules } from "../modules.ts";
 import { siteUrl } from "./links.ts";
 import type { V1ItemPayload } from "./publish.ts";
 import type { DailyNote } from "./reports.ts";
 import { publicSourceName } from "./rules.ts";
+import { evidenceCondition, listedCondition } from "./scope.ts";
 import type { v1HotTopics, v1Story } from "./stories.ts";
 import { v1Items, type V1ItemsResult } from "./v1.ts";
 
@@ -38,13 +40,33 @@ export function stamp(at: string | Date, now = Date.now()): string {
   return `${day.slice(0, 4) === beijingDate(now).slice(0, 4) ? day.slice(5) : day} ${beijingTime(at)}`;
 }
 
+/** The source provided a date without a time; do not print the stored midnight as a claim. */
+function stampDateOnly(day: string, now = Date.now()): string {
+  return `${day.slice(0, 4) === beijingDate(now).slice(0, 4) ? day.slice(5) : day}（仅日期）`;
+}
+
+/** Precision for already-public items, kept beside the unchanged v1 JSON shape. */
+export async function dateOnlyForItems(ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  const rows = await sql<{ id: string; publication_time: string | null }[]>`
+    SELECT p.article_id AS id, a.publication_time FROM publications p JOIN articles a ON a.id = p.article_id
+    WHERE p.article_id = ANY(${[...new Set(ids)]}::text[]) AND p.published_at IS NOT NULL`;
+  return new Map(rows.filter((r): r is { id: string; publication_time: string } =>
+    !!r.publication_time && /^\d{4}-\d{2}-\d{2}$/.test(r.publication_time)).map(r => [r.id, r.publication_time]));
+}
+
+const itemStamp = (id: string, at: string, dates: ReadonlyMap<string, string>) => {
+  const day = dates.get(id);
+  return day ? stampDateOnly(day) : stamp(at);
+};
+
 const linkText = (title: string) => title.replace(/([[\]])/g, "\\$1");
 const category = (key: string | null) => (key && isCategoryKey(key) ? CATEGORY_LABELS[key] : null);
 
-function itemLines(items: V1ItemPayload[]): string[] {
+function itemLines(items: V1ItemPayload[], dates: ReadonlyMap<string, string>): string[] {
   return items.flatMap((it, i) => [
     `${i + 1}. [${linkText(it.title)}](${it.links.aihot})`,
-    `   ${[publicSourceName(it.source.name), it.publishedAt ? `发布于 ${stamp(it.publishedAt)}` : `${SITE.name} 收录于 ${stamp(it.discoveredAt)}`, category(it.category)].filter(Boolean).join(" · ")}`,
+    `   ${[publicSourceName(it.source.name), it.publishedAt ? `发布于 ${itemStamp(it.id, it.publishedAt, dates)}` : `${SITE.name} 收录于 ${stamp(it.discoveredAt)}`, category(it.category)].filter(Boolean).join(" · ")}`,
     ...(it.summary ? [`   摘要：${it.summary}`] : []),
     ...(it.reason ? [`   ${ITEM_COPY.reasonLabel}：${it.reason}`] : []),
     `   原文：${it.links.original}`,
@@ -61,7 +83,7 @@ const BRIEF_HINTS = [
 
 export interface LatestQuery { window: AgentWindow; mode: "selected" | "all"; category: PublicApiCategoryKey | null; limit: number }
 
-export function latestAnswer(res: V1ItemsResult, q: LatestQuery): string {
+export function latestAnswer(res: V1ItemsResult, q: LatestQuery, dates: ReadonlyMap<string, string> = new Map()): string {
   const scope = q.mode === "selected" ? "精选" : "全部公开动态";
   const title = [`${SITE.name} ${scope}`, category(q.category), WINDOW_ZH[q.window]].filter(Boolean).join(" · ");
   if (!res.items.length) {
@@ -71,7 +93,7 @@ export function latestAnswer(res: V1ItemsResult, q: LatestQuery): string {
     ]);
   }
   const more = res.page.hasMore ? (q.limit < 30 ? "后面还有，调大 limit（最多 30）可以多看。" : "后面还有，范围更大时请缩小到某个分类或关键词。") : "";
-  return answer([`# ${title}`, "", `${res.items.length} 条，从新到旧，时间为北京时间。${more}`], itemLines(res.items), BRIEF_HINTS);
+  return answer([`# ${title}`, "", `${res.items.length} 条，从新到旧，时间为北京时间。${more}`], itemLines(res.items, dates), BRIEF_HINTS);
 }
 
 /** Editorial picks first; only when they have nothing is the whole public pool searched (as MCP always did). */
@@ -82,7 +104,7 @@ export async function searchItems(q: string, window: AgentWindow, cat: PublicApi
   return { res: await load(query("all")), expanded: true };
 }
 
-export function searchAnswer(found: { res: V1ItemsResult; expanded: boolean }, q: { q: string; window: AgentWindow; category: PublicApiCategoryKey | null }): string {
+export function searchAnswer(found: { res: V1ItemsResult; expanded: boolean }, q: { q: string; window: AgentWindow; category: PublicApiCategoryKey | null }, dates: ReadonlyMap<string, string> = new Map()): string {
   const title = [`${SITE.name} 搜索「${q.q}」`, category(q.category), WINDOW_ZH[q.window]].filter(Boolean).join(" · ");
   const { res, expanded } = found;
   if (!res.items.length) {
@@ -93,7 +115,7 @@ export function searchAnswer(found: { res: V1ItemsResult; expanded: boolean }, q
     ]);
   }
   const scope = expanded ? "精选里没有，以下来自全部公开动态（没有进入精选）。" : `以下是 ${SITE.name} 精选里的相关报道。`;
-  return answer([`# ${title}`, "", `${scope}${res.items.length} 条，从新到旧，时间为北京时间。`], itemLines(res.items), [
+  return answer([`# ${title}`, "", `${scope}${res.items.length} 条，从新到旧，时间为北京时间。`], itemLines(res.items, dates), [
     `只根据这些结果回答：这是 ${SITE.name} 收录的相关报道，不是全网搜索，别说成“全网只有这些”。`,
     ...(expanded ? [`告诉用户这些没有进入 ${SITE.name} 精选。`] : []),
     ...BRIEF_HINTS.slice(1),
@@ -102,7 +124,24 @@ export function searchAnswer(found: { res: V1ItemsResult; expanded: boolean }, q
 
 type HotTopics = Awaited<ReturnType<typeof v1HotTopics>>;
 
-export function hotAnswer(res: HotTopics, limit: number, via: Via): string {
+/** A hot topic's latest time is the maximum over its evidence, not necessarily its representative. */
+export async function dateOnlyForHotTopics(items: HotTopics["items"]): Promise<Map<string, string>> {
+  if (!items.length) return new Map();
+  const wanted = items.map(i => ({ public_id: i.links.story.split("/").pop(), at: i.latestAt }));
+  const rows = await sql<{ public_id: string; day: string }[]>`
+    WITH wanted AS (SELECT * FROM jsonb_to_recordset(${sql.json(wanted)}::jsonb) AS x(public_id uuid, at timestamptz))
+    SELECT w.public_id, min(a.publication_time) AS day
+    FROM wanted w JOIN stories st ON st.public_id = w.public_id JOIN facts f ON f.story_id = st.id
+    JOIN fact_articles fa ON fa.fact_id = f.id JOIN publications p ON p.article_id = fa.article_id
+    LEFT JOIN articles a ON a.id = p.article_id
+    WHERE ${evidenceCondition()} AND ${listedCondition(new Date())} AND coalesce(p.published_at, p.discovered_at) = w.at
+    GROUP BY w.public_id
+    HAVING bool_and(p.published_at IS NOT NULL AND coalesce(a.publication_time ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$', false))
+      AND count(DISTINCT a.publication_time) = 1`;
+  return new Map(rows.map(r => [r.public_id, r.day]));
+}
+
+export function hotAnswer(res: HotTopics, limit: number, via: Via, dates: ReadonlyMap<string, string> = new Map()): string {
   const items = res.items.slice(0, limit);
   if (!items.length) return answer([`# ${SITE.name} 当前热点`, "", "热点榜暂时是空的。"], null, ["如实告诉用户暂时没有热点，可以改看最新精选。"]);
   const data = items.flatMap((t) => {
@@ -111,7 +150,7 @@ export function hotAnswer(res: HotTopics, limit: number, via: Via): string {
     const names = sources.length > 6 ? `${sources.slice(0, 6).join("、")} 等` : sources.join("、");
     return [
       `第 ${t.rank} 名：[${linkText(t.title)}](${t.links.aihot})`,
-      `   信源：${names}（${t.sourceCount} 个）· 最新进展 ${stamp(t.latestAt)}`,
+      `   信源：${names}（${t.sourceCount} 个）· 最新进展 ${itemStamp(publicId, t.latestAt, dates)}`,
       via === "http" ? `   来龙去脉：${agentUrl(`/stories/${publicId}`)}` : `   来龙去脉：${T.story}，public_id=${publicId}`,
       "",
     ];
@@ -125,21 +164,25 @@ export function hotAnswer(res: HotTopics, limit: number, via: Via): string {
 
 type Story = NonNullable<Awaited<ReturnType<typeof v1Story>>>["story"];
 
-export function storyAnswer(s: Story, limit: number, via: Via): string {
+export function storyAnswer(s: Story, limit: number, via: Via, dates: ReadonlyMap<string, string> = new Map()): string {
   const reports = s.reports.slice(0, limit);
   const neighbours = [...s.storyline, ...s.related];
+  const latest = s.reports.find(r => r.publishedAt === s.latestAt && r.title === s.latest);
+  const first = s.reports.filter(r => r.publishedAt === s.firstReportAt);
+  const firstDays = first.map(r => dates.get(r.id));
+  const firstDay = firstDays.length && firstDays.every(day => day && day === firstDays[0]) ? firstDays[0] : undefined;
   const data = [
-    `最新进展（${stamp(s.latestAt)}）：${s.latest}`,
+    `最新进展（${latest ? itemStamp(latest.id, s.latestAt, dates) : stamp(s.latestAt)}）：${s.latest}`,
     "",
     ...(s.digest ? [`事件综述：${s.digest}`, ""] : []),
     "报道时间线（从新到旧）：",
-    ...reports.map((r, i) => `${i + 1}. ${stamp(r.publishedAt)} · ${publicSourceName(r.source.name)}${r.source.firstParty ? "（一手）" : ""} · [${linkText(r.title)}](${r.links.aihot})`),
+    ...reports.map((r, i) => `${i + 1}. ${itemStamp(r.id, r.publishedAt, dates)} · ${publicSourceName(r.source.name)}${r.source.firstParty ? "（一手）" : ""} · [${linkText(r.title)}](${r.links.aihot})`),
     ...(neighbours.length ? ["", "相关事件：", ...neighbours.map((n) => `- ${n.title}：${via === "http" ? agentUrl(`/stories/${n.publicId}`) : `public_id=${n.publicId}`}`)] : []),
   ];
   return answer([
     `# ${SITE.name} 事件：${s.title}`,
     "",
-    `${s.status === "active" ? "持续更新" : "历史事件"} · ${s.reportCount} 篇报道 · ${s.sourceCount} 个信源 · 首次报道 ${stamp(s.firstReportAt)}（北京时间）`,
+    `${s.status === "active" ? "持续更新" : "历史事件"} · ${s.reportCount} 篇报道 · ${s.sourceCount} 个信源 · 首次报道 ${firstDay ? stampDateOnly(firstDay) : stamp(s.firstReportAt)}（北京时间）`,
     `事件页：${s.links.aihot}`,
   ], data, [
     "先讲最新进展，再按时间讲清来龙去脉；综述里点明的矛盾或未证实之处要照实说。",
@@ -185,7 +228,11 @@ export function dailyAnswer(r: DailyReport, via: Via, notes: Map<string, DailyNo
     data.push("");
   }
   if (r.flashes.length) {
-    data.push("【快讯】", ...r.flashes.map((f) => `- ${stamp(f.publishedAt)} · [${linkText(f.title)}](${f.links.aihot ?? f.links.original}) · ${publicSourceName(f.source.name)}`), "");
+    data.push("【快讯】", ...r.flashes.map((f) => {
+      const link = f.links.aihot ?? f.links.original;
+      const day = notes.get(link)?.publicationDateOnly;
+      return `- ${day ? stampDateOnly(day) : stamp(f.publishedAt)} · [${linkText(f.title)}](${link}) · ${publicSourceName(f.source.name)}`;
+    }), "");
   }
   return answer([
     `# ${SITE.name} 日报 · ${r.date}（${beijingWeekday(r.date)}）`,
