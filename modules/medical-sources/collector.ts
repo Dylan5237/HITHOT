@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { getDocumentProxy, getResolvedPDFJS } from "unpdf";
+import { getDocumentProxy } from "unpdf";
 import { MEDICAL_SOURCES, type MedicalSource } from "@aihot/industry/medical-sources";
 import { addDays, beijingDate } from "@aihot/contracts/time";
 import { sql } from "@aihot/backend/db";
@@ -76,26 +76,22 @@ function govText(response: { body: Buffer; text(): string }): string {
   catch { return response.text(); }
 }
 
-/** A scanned page or a truncated attachment cannot establish the complete policy text. */
-async function governmentPdf(body: Buffer): Promise<{ text: string; complete: boolean }> {
+/** Read small text attachments without decoding scans; extracted text does not prove completeness. */
+async function governmentPdf(body: Buffer): Promise<string> {
   if (body.subarray(0, 5).toString() !== "%PDF-") throw new Error("Government attachment did not return a PDF");
-  const pdf = await getDocumentProxy(new Uint8Array(body), { maxImageSize: 16_777_216 });
-  const { OPS } = await getResolvedPDFJS();
-  const imageOps = new Set(Object.entries(OPS).filter(([name]) => /^paint(?:Inline)?Image/.test(name)).map(([, value]) => value));
-  let text = "", complete = true;
+  if (body.length > 2 * 1024 * 1024) return "";
+  const pdf = await getDocumentProxy(new Uint8Array(body), { maxImageSize: 0 });
+  let text = "";
   try {
+    if (pdf.numPages > 10) return "";
     for (let n = 1; n <= pdf.numPages; n++) {
       const page = await pdf.getPage(n), content = await page.getTextContent();
-      const operators = await page.getOperatorList();
-      // A text header or watermark does not establish the contents of an embedded scan.
-      if (operators.fnArray.some(op => imageOps.has(op))) complete = false;
       const part = withoutContacts(content.items.map(item => "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "").join(""));
-      if (!/\p{L}/u.test(part)) complete = false;
-      else text += (text ? "\n\n" : "") + part;
+      if (/\p{L}/u.test(part)) text += (text ? "\n\n" : "") + part;
       page.cleanup();
-      if (text.length > 30_000) { complete = false; break; }
+      if (text.length > 30_000) break;
     }
-    return { text: text.slice(0, 30_000), complete: complete && !!text };
+    return text.slice(0, 30_000);
   } finally { await pdf.loadingTask.destroy(); }
 }
 
@@ -165,9 +161,9 @@ async function govCms(source: MedicalSource, report: SourceEvidence, opts: { ini
           if (target.origin !== origin || !/\.pdf$/i.test(target.searchParams.get("filename") ?? target.pathname)) { complete = false; continue; }
           try {
             const file = await read(target.href, report, { redirectPolicy: "same-origin" });
-            const got = await governmentPdf(file.body);
-            if (got.text) body += `\n\n${got.text}`;
-            if (!got.complete) complete = false;
+            const text = await governmentPdf(file.body);
+            if (text) body += `\n\n${text}`;
+            complete = false;
           } catch (error) {
             if (error instanceof CollectionDeniedError) throw error;
             complete = false;

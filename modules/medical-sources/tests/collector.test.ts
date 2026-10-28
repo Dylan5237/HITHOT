@@ -103,12 +103,15 @@ const govList = (records: string[]) => `<script type="text/xml"><datastore><reco
 const govRow = (id: number, day: string, href = `/art/2026/10/28/art_104_${id}.html`) =>
   `<li><span>索引</span><span><a href="${href}" title="医保信息系统政策 ${id} 的完整标题">医保信息系统政策...</a></span><span>${day}</span></li>`;
 
-function policyPdf(text: string, scan = false): Buffer {
+function policyPdf(text: string, scan = false, pages = 1): Buffer {
   const stream = (scan ? "q 500 0 0 600 20 20 cm /Scan Do Q\n" : "") + `BT /F1 12 Tf 20 700 Td (${text}) Tj ET`;
   const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
     `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> ${scan ? "/XObject << /Scan 6 0 R >>" : ""} >> /Contents 5 0 R >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`];
   if (scan) objects.push("<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n0\nendstream");
+  const kids = ["3 0 R"];
+  for (let n = 1; n < pages; n++) { objects.push(objects[2]!); kids.push(`${objects.length} 0 R`); }
+  objects[1] = `<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${pages} >>`;
   let out = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, i) => { offsets.push(Buffer.byteLength(out)); out += `${i + 1} 0 obj\n${object}\nendobj\n`; });
@@ -143,10 +146,34 @@ test("Jiangsu numbered department files are filtered before the import limit and
     assert.deepEqual(result.evidence.errors, []);
     assert.equal(result.candidates.length, 2);
     assert.match(result.candidates[0]!.bodyText!, /Hospitals shall update information systems/);
-    assert.equal(result.candidates[0]!.bodyStatus, "ok");
+    assert.equal(result.candidates[0]!.bodyStatus, "unconfirmed");
     assert.equal(result.candidates[1]!.bodyStatus, "unconfirmed");
     assert.match(result.candidates[1]!.bodyText!, /现印发实施/);
     assert.equal(requests.length, 5);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("large or long Jiangsu PDF attachments retain the notice without reading their policy text", async () => {
+  const day = beijingDate(new Date()), list = "https://wjw.jiangsu.gov.cn/col/col49511/index.html";
+  const original = collectionHttp.fetch;
+  collectionHttp.fetch = async url => {
+    if (url.includes("filename=")) {
+      const body = url.includes("large.pdf") ? Buffer.concat([policyPdf("ATTACHED POLICY"), Buffer.alloc(2 * 1024 * 1024)]) : policyPdf("ATTACHED POLICY", false, 11);
+      return { status: 200, url, body, text: () => body.toString() } as never;
+    }
+    const html = url === list ? govList([1, 2].map(id => `<li><a href="/art/2026/10/28/art_49511_${id}.html" title="关于印发实施办法的通知（苏卫〔2026〕${id}号）">通知</a><span>${day}</span></li>`))
+      : `<meta name="PubDate" content="${day} 08:30"><div id="zoom"><p>现印发实施，请遵照执行。</p><a href="/module/download/downfile.jsp?filename=${url.includes("_1.html") ? "large" : "long"}.pdf">附件</a></div>`;
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-jiangsu-health-files");
+    assert.equal(result.candidates.length, 2);
+    assert.deepEqual(result.evidence.errors, []);
+    for (const candidate of result.candidates) {
+      assert.equal(candidate.bodyStatus, "unconfirmed");
+      assert.match(candidate.bodyText!, /现印发实施/);
+      assert.doesNotMatch(candidate.bodyText!, /ATTACHED POLICY/);
+    }
   } finally { collectionHttp.fetch = original; }
 });
 
