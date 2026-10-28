@@ -148,6 +148,38 @@ test("government preview reads original time and correctly decodes a mislabelled
   } finally { collectionHttp.fetch = original; }
 });
 
+test("policy interpretation uses its own feed and shares an original without duplicating the article", async () => {
+  const day = beijingDate(new Date()), id = "web-nhsa-interpretation", policyId = "web-nhsa-policy";
+  const list = "https://www.nhsa.gov.cn/col/col105/index.html", policyList = "https://www.nhsa.gov.cn/col/col104/index.html";
+  const url = "https://www.nhsa.gov.cn/art/2026/10/28/art_104_900001.html";
+  const requests: string[] = [], original = collectionHttp.fetch;
+  collectionHttp.fetch = async target => {
+    requests.push(target);
+    assert.ok([list, policyList, url].includes(target), `unexpected request: ${target}`);
+    const html = target === url
+      ? `<meta name="PubDate" content="${day} 08:30"><div id="zoom"><p>医保统一编码与信息系统接口更新的政策解读。</p></div>`
+      : govList([govRow(900001, day, url)]);
+    return { status: 200, url: target, body: Buffer.from(html), text: () => html } as never;
+  };
+  for (const sourceId of [policyId, id]) await sql`INSERT INTO sources (id,name,kind,config,tier,participation_mode,enabled) VALUES (${sourceId},'医保测试','external','{}','T1','editorial',true)`;
+  try {
+    const policy = await collectMedicalSource(policyId, { process: false });
+    const interpretation = await collectMedicalSource(id, { process: false });
+    assert.equal(policy.status, "ok");
+    assert.equal(policy.created, 1);
+    assert.equal(interpretation.status, "ok");
+    assert.equal(interpretation.created, 0);
+    assert.ok(requests.includes(list));
+    const articles = await sql`SELECT id,source_id,publication_time,body_text FROM articles WHERE url=${url}`;
+    assert.equal(articles.length, 1);
+    assert.equal(articles[0]!.source_id, policyId);
+    assert.equal(articles[0]!.publication_time, new Date(`${day}T08:30:00+08:00`).toISOString());
+    assert.match(articles[0]!.body_text, /统一编码与信息系统接口/);
+    const discoveries = await sql`SELECT source_id FROM article_discoveries WHERE article_id=${articles[0]!.id} ORDER BY source_id`;
+    assert.deepEqual(discoveries.map(row => row.source_id), [id, policyId].sort());
+  } finally { collectionHttp.fetch = original; }
+});
+
 test("a refused government article stops the source instead of bypassing the restriction", async () => {
   const day = beijingDate(new Date()), list = "https://www.nhsa.gov.cn/col/col104/index.html";
   const original = collectionHttp.fetch, requests: string[] = [];
