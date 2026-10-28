@@ -2,6 +2,45 @@
   "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改和暂停。字段说明见 docs/customize.md；医疗信息化信源的选择与待补清单见 docs/medical-it.md。",
   "sources": [
     {
+      "id": "web-nhsa-policy",
+      "name": "国家医保局 政策法规",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["官方", "政策"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "web-nhsa-notice",
+      "name": "国家医保局 通知公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["官方", "政策"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
+      "id": "web-jiangsu-ybj-notice",
+      "name": "江苏省医保局 通知公告",
+      "kind": "external",
+      "config": {},
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["官方", "政策"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
       "id": "web-jiangmen-hospital",
       "name": "江门市中心医院 本院动态",
       "kind": "web_list",

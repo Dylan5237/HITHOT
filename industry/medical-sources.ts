@@ -1,9 +1,12 @@
 /** Public endpoints and issuer identities verified against the sources' own pages. */
 export interface MedicalSource {
-  id: string; name: string; adapter: "cninfo" | "winning" | "bsoft" | "dhcc" | "goodwill" | "ccgp" | "xian" | "ggzy" | "ratings" | "hkex" | "unavailable";
+  id: string; name: string; adapter: "cninfo" | "winning" | "bsoft" | "dhcc" | "goodwill" | "ccgp" | "xian" | "ggzy" | "ratings" | "hkex" | "gov_cms" | "unavailable";
   url: string; code?: string; orgId?: string; column?: string; query?: string; unavailable?: string;
 }
 export const MEDICAL_SOURCES: readonly MedicalSource[] = [
+  { id: "web-nhsa-policy", name: "国家医保局 政策法规", adapter: "gov_cms", url: "https://www.nhsa.gov.cn/col/col104/index.html" },
+  { id: "web-nhsa-notice", name: "国家医保局 通知公告", adapter: "gov_cms", url: "https://www.nhsa.gov.cn/col/col109/index.html" },
+  { id: "web-jiangsu-ybj-notice", name: "江苏省医保局 通知公告", adapter: "gov_cms", url: "https://ybj.jiangsu.gov.cn/col/col73935/index.html?number=" },
   { id: "cninfo-winning", name: "卫宁健康 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "300253", orgId: "9900012530", column: "szse" },
   { id: "cninfo-neusoft", name: "东软集团 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "600718", orgId: "gssh0600718", column: "sse" },
   { id: "cninfo-bsoft", name: "创业慧康 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "300451", orgId: "9900023801", column: "szse" },

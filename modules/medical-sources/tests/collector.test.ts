@@ -1,12 +1,15 @@
 import "../../../tests/setup.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { addDays, beijingDate } from "@aihot/contracts/time";
-import { collectionHttp } from "@aihot/backend/sources/polite";
+import { closeDb, sql } from "@aihot/backend/db";
+import { collectionHttp, CollectionDeniedError } from "@aihot/backend/sources/polite";
 import { fromHtml } from "@aihot/backend/sources/web-list";
 import { procurementFacts, withoutContacts } from "../privacy.ts";
-import { parseProcurement, previewMedicalSource } from "../collector.ts";
+import { collectMedicalSource, parseGovCmsListing, parseProcurement, previewMedicalSource } from "../collector.ts";
+
+after(async () => closeDb());
 
 const title = "测试医院HIS及电子病历系统建设项目中标公告";
 const values = { buyer: "测试医院", province: "湖北省", amount: "800.0000 万元（人民币）", winner: "东华软件股份公司 联系人：测试联系人", text: "HIS与电子病历系统建设" };
@@ -94,4 +97,150 @@ test("the three hospital and vendor listings retain their own links and dates", 
     assert.equal(items[0]!.publicationTime, "2026-10-26", example.id);
     assert.equal(items[0]!.publishedAt && beijingDate(items[0]!.publishedAt), "2026-10-26", example.id);
   }
+});
+
+const govList = (records: string[]) => `<script type="text/xml"><datastore><recordset>${records.map(row => `<record><![CDATA[${row}]]></record>`).join("")}</recordset></datastore></script>`;
+const govRow = (id: number, day: string, href = `/art/2026/10/28/art_104_${id}.html`) =>
+  `<li><span>索引</span><span><a href="${href}" title="医保信息系统政策 ${id} 的完整标题">医保信息系统政策...</a></span><span>${day}</span></li>`;
+
+test("government XML records retain full titles, source dates and only same-site article URLs", () => {
+  const day = "2026-10-20", url = "https://www.nhsa.gov.cn/col/col104/index.html";
+  const html = govList([govRow(1, day), govRow(2, day, "https://outside.example/art/a.html"), govRow(3, day, "/col/col104/index.html"), govRow(1, day)]);
+  const items = parseGovCmsListing(html, url);
+  assert.equal(items.length, 1);
+  assert.equal(items[0]!.title, "医保信息系统政策 1 的完整标题");
+  assert.equal(items[0]!.url, "https://www.nhsa.gov.cn/art/2026/10/28/art_104_1.html");
+  assert.equal(items[0]!.publicationTime, day);
+  assert.equal(items[0]!.publishedAt?.toISOString(), "2026-10-19T16:00:00.000Z");
+  assert.throws(() => parseGovCmsListing("<html>结构已变化</html>", url), /No government list records/);
+});
+
+test("government preview reads original time and correctly decodes a mislabelled UTF-8 TXT", async () => {
+  const day = beijingDate(new Date());
+  const list = "https://www.nhsa.gov.cn/col/col104/index.html";
+  const one = "https://www.nhsa.gov.cn/art/2026/10/28/art_104_1.html";
+  const two = "https://www.nhsa.gov.cn/art/2026/10/28/art_104_2.html";
+  const txt = "https://www.nhsa.gov.cn/module/download/downfile.jsp?filename=policy.txt";
+  const text = "国家医保局通知：医保信息系统应完成分组方案更新。\n联系人：测试联系人\n联系电话：13800000000";
+  const pages: Record<string, string> = {
+    [list]: govList([govRow(1, day), govRow(2, day)]),
+    [one]: `<meta name="PubDate" content="${day} 10:30"><div id="zoom"><p>医保信息系统完成统一编码和接口更新。</p><p>联系人：测试联系人</p><p>电话：13800000000</p></div>`,
+    [two]: `<meta name="PubDate" content="${day} 11:10"><div id="zoom"><a href="/module/download/downfile.jsp?filename=policy.txt">通知.txt</a></div>`,
+    [txt]: text,
+  };
+  const requests: string[] = [], original = collectionHttp.fetch;
+  collectionHttp.fetch = async url => {
+    requests.push(url);
+    assert.ok(pages[url], `unexpected request: ${url}`);
+    const body = Buffer.from(pages[url], "utf8");
+    return { status: 200, url, body, text: () => url === txt ? new TextDecoder("gb18030").decode(body) : pages[url] } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-nhsa-policy", { limit: 2 });
+    assert.deepEqual(requests, [list, one, two, txt]);
+    assert.deepEqual(result.evidence.errors, []);
+    assert.equal(result.candidates.length, 2);
+    assert.equal(result.candidates[0]!.publicationTime, new Date(`${day}T10:30:00+08:00`).toISOString());
+    assert.match(result.candidates[0]!.bodyText!, /统一编码和接口更新/);
+    assert.match(result.candidates[1]!.bodyText!, /医保信息系统应完成分组方案更新/);
+    assert.equal(result.candidates[1]!.publicationTime, new Date(`${day}T11:10:00+08:00`).toISOString());
+    assert.doesNotMatch(JSON.stringify(result.candidates), /测试联系人|13800000000/);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("a refused government article stops the source instead of bypassing the restriction", async () => {
+  const day = beijingDate(new Date()), list = "https://www.nhsa.gov.cn/col/col104/index.html";
+  const original = collectionHttp.fetch, requests: string[] = [];
+  collectionHttp.fetch = async url => {
+    requests.push(url);
+    if (url !== list) throw new CollectionDeniedError("robots.txt disallows the article");
+    const html = govList([govRow(1, day), govRow(2, day)]);
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-nhsa-policy");
+    assert.equal(result.candidates.length, 0);
+    assert.match(result.evidence.errors[0]!.error, /robots\.txt disallows/);
+    assert.equal(requests.length, 2);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("a missing policy TXT is not mistaken for an attachment-only body", async () => {
+  const day = beijingDate(new Date()), list = "https://www.nhsa.gov.cn/col/col104/index.html";
+  const original = collectionHttp.fetch;
+  collectionHttp.fetch = async url => {
+    if (url.includes("downfile.jsp")) return { status: 404, url, body: Buffer.alloc(0), text: () => "" } as never;
+    const html = url === list ? govList([govRow(1, day)]) :
+      `<meta name="PubDate" content="${day} 09:00"><div id="zoom">附件：<a href="/module/download/downfile.jsp?filename=missing.txt">通知.txt</a></div>`;
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-nhsa-policy");
+    assert.equal(result.candidates[0]!.bodyStatus, "unconfirmed");
+    assert.equal(result.candidates[0]!.bodyText, null);
+    assert.match(result.evidence.errors[0]!.error, /HTTP 404/);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("a policy containing only PDF links keeps its body unconfirmed", async () => {
+  const day = beijingDate(new Date()), list = "https://www.nhsa.gov.cn/col/col104/index.html";
+  const original = collectionHttp.fetch, requests: string[] = [];
+  collectionHttp.fetch = async url => {
+    requests.push(url);
+    const html = url === list ? govList([govRow(1, day)]) :
+      `<meta name="PubDate" content="${day} 09:00"><div id="zoom">附件：<a href="/module/download/downfile.jsp?filename=policy.pdf">政策.pdf</a></div>`;
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-nhsa-policy");
+    assert.equal(result.candidates[0]!.bodyStatus, "unconfirmed");
+    assert.equal(result.candidates[0]!.bodyText, null);
+    assert.equal(requests.length, 2);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("a date-only listing on the 48-hour boundary is checked against the article's time", async () => {
+  const day = beijingDate(new Date()), boundaryDay = addDays(day, -2);
+  const list = "https://www.nhsa.gov.cn/col/col104/index.html", original = collectionHttp.fetch;
+  collectionHttp.fetch = async url => {
+    const html = url === list ? govList([govRow(1, boundaryDay)]) :
+      `<meta name="PubDate" content="${boundaryDay} 18:00"><div id="zoom"><p>医保信息系统数据标准更新。</p></div>`;
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const initializedAt = new Date(`${day}T12:00:00+08:00`).toISOString();
+    const result = await previewMedicalSource("web-nhsa-policy", { initializedAt });
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.candidates[0]!.publicationTime, new Date(`${boundaryDay}T18:00:00+08:00`).toISOString());
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("government source bounds first import and does not re-fetch stored bodies", async () => {
+  const id = "web-nhsa-notice", day = beijingDate(new Date());
+  const list = "https://www.nhsa.gov.cn/col/col109/index.html";
+  const items = Array.from({ length: 10 }, (_, i) => govRow(i + 1, day));
+  const requests: string[] = [], original = collectionHttp.fetch;
+  collectionHttp.fetch = async url => {
+    requests.push(url);
+    const html = url === list ? govList(items) : `<meta name="PubDate" content="${day} 00:05"><div id="zoom"><p>医保信息系统已完成接口和数据标准更新。</p></div>`;
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  await sql`INSERT INTO sources (id,name,kind,config,tier,participation_mode,enabled) VALUES (${id},'医保测试','external','{}','T1','editorial',true)`;
+  try {
+    const first = await collectMedicalSource(id, { process: false });
+    assert.equal(first.status, "ok");
+    assert.equal(first.created, 8);
+    assert.equal(requests.length, 9);
+    assert.equal((await sql`SELECT count(*)::int AS n FROM articles WHERE source_id=${id} AND backfill`)[0]!.n, 8);
+    requests.length = 0;
+    const next = await collectMedicalSource(id, { process: false });
+    assert.equal(next.status, "ok");
+    assert.equal(next.created, 2);
+    assert.equal(requests.length, 3);
+    requests.length = 0;
+    const unchanged = await collectMedicalSource(id, { process: false });
+    assert.equal(unchanged.status, "ok");
+    assert.equal(unchanged.created, 0);
+    assert.deepEqual(requests, [list]);
+  } finally { collectionHttp.fetch = original; }
 });

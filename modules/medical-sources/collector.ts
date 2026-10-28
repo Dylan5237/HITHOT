@@ -3,11 +3,13 @@ import { getDocumentProxy } from "unpdf";
 import { MEDICAL_SOURCES, type MedicalSource } from "@aihot/industry/medical-sources";
 import { addDays, beijingDate } from "@aihot/contracts/time";
 import { sql } from "@aihot/backend/db";
-import { collectSource, type CollectResult } from "@aihot/backend/sources/collect";
+import { collectSource, storedDetails, type CollectResult } from "@aihot/backend/sources/collect";
 import { collectionHttp, CollectionDeniedError } from "@aihot/backend/sources/polite";
+import { fromHtml } from "@aihot/backend/sources/web-list";
 import { readPublicationDate } from "@aihot/backend/sources/dates";
 import { readable } from "@aihot/backend/content/extract";
 import { collapseWhitespace, stripTags } from "@aihot/backend/lib/text";
+import { identityKeyForUrl } from "@aihot/backend/lib/url";
 import type { GuardedFetchOptions } from "@aihot/backend/lib/http-fetch";
 import type { Candidate } from "@aihot/backend/sources/types";
 import { procurementFacts, SOFTWARE, withoutContacts } from "./privacy.ts";
@@ -51,6 +53,87 @@ function material(id: string, title: string, url: string, body: string, date: Re
   return { identityKey: `medical:${id}`, title: collapseWhitespace(stripTags(title)), url, language: "zh", author: null,
     publishedAt: date.publishedAt, publicationTime: date.publicationTime, excerpt: text.slice(0, 1500) || null,
     bodyText: text || null, bodyStatus: text ? "ok" : "none", raw };
+}
+
+/** The sites put their rendered list in public XML CDATA, not in the page's HTML tree. */
+export function parseGovCmsListing(html: string, url: string): Candidate[] {
+  const $ = cheerio.load(html), records: string[] = [];
+  for (const node of $('script[type="text/xml"]').toArray()) {
+    const xml = cheerio.load($(node).text(), { xmlMode: true });
+    records.push(...xml("recordset record").toArray().map(record => xml(record).text()));
+  }
+  if (!records.length) throw new Error("No government list records found");
+  const list = cheerio.load(`<ul>${records.join("\n")}</ul>`);
+  list("a[title]").each((_, el) => { const title = list(el).attr("title"); if (title) list(el).text(title); });
+  const source = { config: { url, itemSelector: "li", linkSelector: "a[href]", titleSelector: "a",
+    publishedAtSelector: "span:last-child", allowUrlPrefixes: [`${new URL(url).origin}/art/`] } };
+  return fromHtml(list.html(), url, source as never).map(candidate => ({ ...candidate, identityKey: identityKeyForUrl(candidate.url) ?? undefined, language: "zh" }));
+}
+
+/** The downloadable TXT is sometimes UTF-8 despite the government server's GB2312 header. */
+function govText(response: { body: Buffer; text(): string }): string {
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(response.body).replace(/\u0000/g, "\uFFFD"); }
+  catch { return response.text(); }
+}
+
+async function govCms(source: MedicalSource, report: SourceEvidence, opts: { initializedAt?: string; skipKnown?: boolean }): Promise<Candidate[]> {
+  const response = await read(source.url, report, { redirectPolicy: "same-origin" });
+  const origin = new URL(source.url).origin;
+  if (new URL(response.url).origin !== origin) throw new Error("Government listing changed origin");
+  const listed = parseGovCmsListing(response.text(), response.url);
+  report.found = listed.length;
+  const keys = listed.map(candidate => identityKeyForUrl(candidate.url)).filter((key): key is string => !!key);
+  const known = opts.skipKnown ? await storedDetails(keys) : new Map();
+  const initialized = opts.initializedAt ? Date.parse(opts.initializedAt) : NaN;
+  const floor = Number.isFinite(initialized) ? initialized - 48 * 3600_000 : null;
+  const out: Candidate[] = [];
+  for (const candidate of listed) {
+    const existing = known.get(identityKeyForUrl(candidate.url) ?? "");
+    if (candidate.publishedAt && !inWindow(candidate.publishedAt, report)) { report.skipped++; continue; }
+    // A list that only names a day can still have a detail time after the 48-hour boundary.
+    const beforeFloor = floor !== null && candidate.publishedAt && (candidate.publicationTime?.length === 10
+      ? candidate.publicationTime < beijingDate(new Date(floor)) : candidate.publishedAt.getTime() < floor);
+    if (!existing && beforeFloor) { report.skipped++; continue; }
+    if (report.limit && out.length >= report.limit) break;
+    if (existing && (existing.source_id !== source.id || existing.body_status === "ok" && existing.title === candidate.title)) { out.push(candidate); continue; }
+    try {
+      const detail = await read(candidate.url, report, { redirectPolicy: "same-origin" });
+      if (new URL(detail.url).origin !== origin) throw new Error("Government article changed origin");
+      const $ = cheerio.load(detail.text());
+      const originalDate = dated($('meta[name="PubDate"], meta[name="pubdate"]').first().attr("content"));
+      if (originalDate.publishedAt) Object.assign(candidate, originalDate);
+      if (candidate.publishedAt && !inWindow(candidate.publishedAt, report)) { report.skipped++; continue; }
+      const main = $("#zoom").first();
+      const extracted = main.length ? main.html() ?? "" : readable(detail.text(), detail.url)?.html ?? "";
+      let body = withoutContacts(extracted.replace(/<!--[\s\S]*?-->/g, ""));
+      const withoutLinks = main.clone(); withoutLinks.find("a,img,script,style").remove();
+      const attachmentOnly = main.length > 0 && main.find('a[href*="/module/download/"]').length > 0
+        && withoutContacts(withoutLinks.html() ?? "").length < 100;
+      if (attachmentOnly) body = "";
+      const textLink = $("a[href]").toArray().map(node => $(node).attr("href")).filter((href): href is string => !!href)
+        .map(href => { try { return new URL(href, detail.url); } catch { return null; } })
+        .find(target => target?.origin === origin && target.pathname === "/module/download/downfile.jsp"
+          && /\.txt$/i.test(target.searchParams.get("filename") ?? ""));
+      if (textLink) {
+        try {
+          const textFile = await read(textLink.href, report, { redirectPolicy: "same-origin", maxBytes: 2 * 1024 * 1024 });
+          const text = govText(textFile);
+          if (!text.trim() || /^\s*(?:%PDF-|PK\x03\x04)/.test(text) || /<\s*(?:html|body|script)\b/i.test(text)) throw new Error("Government TXT is not plain text");
+          body = withoutContacts(text);
+        } catch (error) {
+          if (error instanceof CollectionDeniedError) throw error;
+          report.errors.push({ url: textLink.href, error: String(error instanceof Error ? error.message : error) });
+        }
+      }
+      if (!candidate.publishedAt) report.undated++;
+      out.push({ ...candidate, bodyText: body.slice(0, 30_000) || null, bodyStatus: body ? "ok" : "unconfirmed" });
+    } catch (error) {
+      if (error instanceof CollectionDeniedError) throw error;
+      report.errors.push({ url: candidate.url, error: String(error instanceof Error ? error.message : error) });
+      out.push(candidate);
+    }
+  }
+  return out;
 }
 
 async function firstPage(url: string, report: SourceEvidence): Promise<string> {
@@ -272,7 +355,7 @@ async function ratings(source: MedicalSource, report: SourceEvidence): Promise<C
   return out;
 }
 
-export async function previewMedicalSource(id: string, opts: { limit?: number } = {}): Promise<{ candidates: Candidate[]; evidence: SourceEvidence }> {
+export async function previewMedicalSource(id: string, opts: { limit?: number; initializedAt?: string; skipKnown?: boolean } = {}): Promise<{ candidates: Candidate[]; evidence: SourceEvidence }> {
   const spec = MEDICAL_SOURCES.find(s=>s.id===id);
   if (!spec) throw new Error("Unknown medical source");
   const report = evidence(id);
@@ -280,7 +363,8 @@ export async function previewMedicalSource(id: string, opts: { limit?: number } 
   let candidates: Candidate[];
   try {
     if (spec.unavailable) throw new Error(spec.unavailable);
-    if (spec.adapter === "cninfo") candidates = await cninfo(spec,report);
+    if (spec.adapter === "gov_cms") candidates = await govCms(spec,report,opts);
+    else if (spec.adapter === "cninfo") candidates = await cninfo(spec,report);
     else if (spec.adapter === "winning") candidates = await winning(spec,report);
     else if (spec.adapter === "dhcc" || spec.adapter === "goodwill") candidates = await companyHtml(spec,report);
     else if (spec.adapter === "ccgp") candidates = await ccgp(spec,report);
@@ -301,8 +385,10 @@ export async function previewMedicalSource(id: string, opts: { limit?: number } 
 
 export async function collectMedicalSource(id: string, opts: { force?: boolean; process?: boolean } = {}): Promise<Record<string,unknown>> {
   let report: SourceEvidence | undefined;
-  const result: CollectResult = await collectSource(id,{...opts,initialLimit:10_000,externalFetch:async()=>{
-    const preview = await previewMedicalSource(id);
+  const gov = MEDICAL_SOURCES.find(source => source.id === id)?.adapter === "gov_cms";
+  const result: CollectResult = await collectSource(id,{...opts,initialLimit:gov ? 8 : 10_000,externalFetch:async source=>{
+    const initializedAt = typeof source.cursor?.initializedAt === "string" ? source.cursor.initializedAt : undefined;
+    const preview = await previewMedicalSource(id,gov ? { limit: initializedAt ? undefined : 8, initializedAt, skipKnown: !!initializedAt } : {});
     report = preview.evidence;
     // A refused endpoint is a failed fetch, with the existing source backoff and health record.
     if (report.errors.length && !preview.candidates.length) throw new Error(report.errors.map(e=>e.error).join("; "));
