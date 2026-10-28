@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { getDocumentProxy } from "unpdf";
+import { getDocumentProxy, getResolvedPDFJS } from "unpdf";
 import { MEDICAL_SOURCES, type MedicalSource } from "@aihot/industry/medical-sources";
 import { addDays, beijingDate } from "@aihot/contracts/time";
 import { sql } from "@aihot/backend/db";
@@ -76,12 +76,41 @@ function govText(response: { body: Buffer; text(): string }): string {
   catch { return response.text(); }
 }
 
+/** A scanned page or a truncated attachment cannot establish the complete policy text. */
+async function governmentPdf(body: Buffer): Promise<{ text: string; complete: boolean }> {
+  if (body.subarray(0, 5).toString() !== "%PDF-") throw new Error("Government attachment did not return a PDF");
+  const pdf = await getDocumentProxy(new Uint8Array(body), { maxImageSize: 16_777_216 });
+  const { OPS } = await getResolvedPDFJS();
+  const imageOps = new Set(Object.entries(OPS).filter(([name]) => /^paint(?:Inline)?Image/.test(name)).map(([, value]) => value));
+  let text = "", complete = true;
+  try {
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const page = await pdf.getPage(n), content = await page.getTextContent();
+      const operators = await page.getOperatorList();
+      // A text header or watermark does not establish the contents of an embedded scan.
+      if (operators.fnArray.some(op => imageOps.has(op))) complete = false;
+      const part = withoutContacts(content.items.map(item => "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "").join(""));
+      if (!/\p{L}/u.test(part)) complete = false;
+      else text += (text ? "\n\n" : "") + part;
+      page.cleanup();
+      if (text.length > 30_000) { complete = false; break; }
+    }
+    return { text: text.slice(0, 30_000), complete: complete && !!text };
+  } finally { await pdf.loadingTask.destroy(); }
+}
+
 async function govCms(source: MedicalSource, report: SourceEvidence, opts: { initializedAt?: string; skipKnown?: boolean }): Promise<Candidate[]> {
   const response = await read(source.url, report, { redirectPolicy: "same-origin" });
   const origin = new URL(source.url).origin;
   if (new URL(response.url).origin !== origin) throw new Error("Government listing changed origin");
-  const listed = parseGovCmsListing(response.text(), response.url);
+  const jiangsuFiles = source.id === "web-jiangsu-health-files";
+  let listed = parseGovCmsListing(response.text(), response.url);
   report.found = listed.length;
+  if (jiangsuFiles) {
+    // The column also holds individual qualifications and rosters; this source reads numbered department files.
+    listed = listed.filter(candidate => /苏(?:卫|中医)[\p{Script=Han}]*(?:[（(][\p{Script=Han}]+[）)])?[〔﹝［\[]\d{4}[〕﹞］\]]\s*\d+号/u.test(candidate.title));
+    report.skipped += report.found - listed.length;
+  }
   const keys = listed.map(candidate => identityKeyForUrl(candidate.url)).filter((key): key is string => !!key);
   const known = opts.skipKnown ? await storedDetails(keys) : new Map();
   const initialized = opts.initializedAt ? Date.parse(opts.initializedAt) : NaN;
@@ -109,7 +138,7 @@ async function govCms(source: MedicalSource, report: SourceEvidence, opts: { ini
       const withoutLinks = main.clone(); withoutLinks.find("a,img,script,style").remove();
       const attachmentOnly = main.length > 0 && main.find('a[href*="/module/download/"]').length > 0
         && withoutContacts(withoutLinks.html() ?? "").length < 100;
-      if (attachmentOnly) body = "";
+      if (attachmentOnly) body = jiangsuFiles ? withoutContacts(withoutLinks.html() ?? "") : "";
       const textLink = $("a[href]").toArray().map(node => $(node).attr("href")).filter((href): href is string => !!href)
         .map(href => { try { return new URL(href, detail.url); } catch { return null; } })
         .find(target => target?.origin === origin && target.pathname === "/module/download/downfile.jsp"
@@ -125,12 +154,34 @@ async function govCms(source: MedicalSource, report: SourceEvidence, opts: { ini
           report.errors.push({ url: textLink.href, error: String(error instanceof Error ? error.message : error) });
         }
       }
+      let complete = !!body;
+      if (jiangsuFiles) {
+        const content = cheerio.load(extracted);
+        const attachments = content("a[href]").toArray().map(node => content(node).attr("href")!)
+          .filter(href => /\/module\/download\/|\.(?:pdf|docx?|xlsx?)(?:$|[?#])/i.test(href));
+        if (attachments.length) complete = true;
+        for (const href of attachments) {
+          const target = new URL(href, detail.url);
+          if (target.origin !== origin || !/\.pdf$/i.test(target.searchParams.get("filename") ?? target.pathname)) { complete = false; continue; }
+          try {
+            const file = await read(target.href, report, { redirectPolicy: "same-origin" });
+            const got = await governmentPdf(file.body);
+            if (got.text) body += `\n\n${got.text}`;
+            if (!got.complete) complete = false;
+          } catch (error) {
+            if (error instanceof CollectionDeniedError) throw error;
+            complete = false;
+            report.errors.push({ url: target.href, error: String(error instanceof Error ? error.message : error) });
+          }
+        }
+        if (body.length > 30_000) complete = false;
+      }
       if (!candidate.publishedAt) report.undated++;
-      out.push({ ...candidate, bodyText: body.slice(0, 30_000) || null, bodyStatus: body ? "ok" : "unconfirmed" });
+      out.push({ ...candidate, bodyText: body.slice(0, 30_000) || null, bodyStatus: complete ? "ok" : "unconfirmed" });
     } catch (error) {
       if (error instanceof CollectionDeniedError) throw error;
       report.errors.push({ url: candidate.url, error: String(error instanceof Error ? error.message : error) });
-      out.push(candidate);
+      out.push(jiangsuFiles ? { ...candidate, bodyStatus: "unconfirmed" } : candidate);
     }
   }
   return out;

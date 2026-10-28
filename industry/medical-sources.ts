@@ -8,6 +8,7 @@ export const MEDICAL_SOURCES: readonly MedicalSource[] = [
   { id: "web-nhsa-notice", name: "国家医保局 通知公告", adapter: "gov_cms", url: "https://www.nhsa.gov.cn/col/col109/index.html" },
   { id: "web-nhsa-interpretation", name: "国家医保局 政策解读", adapter: "gov_cms", url: "https://www.nhsa.gov.cn/col/col105/index.html" },
   { id: "web-jiangsu-ybj-notice", name: "江苏省医保局 通知公告", adapter: "gov_cms", url: "https://ybj.jiangsu.gov.cn/col/col73935/index.html?number=" },
+  { id: "web-jiangsu-health-files", name: "江苏省卫健委 发文通知", adapter: "gov_cms", url: "https://wjw.jiangsu.gov.cn/col/col49511/index.html" },
   { id: "cninfo-winning", name: "卫宁健康 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "300253", orgId: "9900012530", column: "szse" },
   { id: "cninfo-neusoft", name: "东软集团 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "600718", orgId: "gssh0600718", column: "sse" },
   { id: "cninfo-bsoft", name: "创业慧康 巨潮公告", adapter: "cninfo", url: "https://www.cninfo.com.cn/new/hisAnnouncement/query", code: "300451", orgId: "9900023801", column: "szse" },

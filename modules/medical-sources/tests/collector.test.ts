@@ -103,6 +103,90 @@ const govList = (records: string[]) => `<script type="text/xml"><datastore><reco
 const govRow = (id: number, day: string, href = `/art/2026/10/28/art_104_${id}.html`) =>
   `<li><span>索引</span><span><a href="${href}" title="医保信息系统政策 ${id} 的完整标题">医保信息系统政策...</a></span><span>${day}</span></li>`;
 
+function policyPdf(text: string, scan = false): Buffer {
+  const stream = (scan ? "q 500 0 0 600 20 20 cm /Scan Do Q\n" : "") + `BT /F1 12 Tf 20 700 Td (${text}) Tj ET`;
+  const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> ${scan ? "/XObject << /Scan 6 0 R >>" : ""} >> /Contents 5 0 R >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`];
+  if (scan) objects.push("<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n0\nendstream");
+  let out = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, i) => { offsets.push(Buffer.byteLength(out)); out += `${i + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.slice(1).map(n => `${String(n).padStart(10, "0")} 00000 n \n`).join("");
+  return Buffer.from(out + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+}
+
+test("Jiangsu numbered department files are filtered before the import limit and retain attachment completeness", async () => {
+  const day = beijingDate(new Date()), list = "https://wjw.jiangsu.gov.cn/col/col49511/index.html";
+  const origin = "https://wjw.jiangsu.gov.cn", original = collectionHttp.fetch, requests: string[] = [];
+  const row = (id: number, title: string) => `<li><a href="/art/2026/10/28/art_49511_${id}.html" title="${title}">${title}</a><span>${day}</span></li>`;
+  const rows = [...Array.from({ length: 9 }, (_, i) => row(i + 1, "个人资格和名单公示")),
+    row(100, "关于印发医疗服务意见的通知（苏卫医政〔2026〕30号）"),
+    row(101, "关于印发医院评审细则的通知（苏卫规（医政）〔2026〕28号）")];
+  collectionHttp.fetch = async url => {
+    requests.push(url);
+    if (url.startsWith(origin + "/module/download/")) {
+      const scan = url.includes("scan.pdf");
+      const body = policyPdf(scan ? "SCANNED POLICY HEADER" : "Hospitals shall update information systems.", scan);
+      return { status: 200, url, body, text: () => body.toString() } as never;
+    }
+    const scan = url.includes("_101.html");
+    const html = url === list ? govList(rows)
+      : `<meta name="PubDate" content="${day} 08:30"><div id="zoom"><p>现印发实施，请遵照执行。</p><a href="/module/download/downfile.jsp?filename=${scan ? "scan" : "policy"}.pdf">政策附件</a></div>`;
+    assert.ok(url === list || /_10[01]\.html$/.test(url), `unexpected detail read: ${url}`);
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-jiangsu-health-files", { limit: 2 });
+    assert.equal(result.evidence.found, 11);
+    assert.deepEqual(result.evidence.errors, []);
+    assert.equal(result.candidates.length, 2);
+    assert.match(result.candidates[0]!.bodyText!, /Hospitals shall update information systems/);
+    assert.equal(result.candidates[0]!.bodyStatus, "ok");
+    assert.equal(result.candidates[1]!.bodyStatus, "unconfirmed");
+    assert.match(result.candidates[1]!.bodyText!, /现印发实施/);
+    assert.equal(requests.length, 5);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("an unreadable or foreign Jiangsu policy attachment never becomes confirmed full material", async () => {
+  const day = beijingDate(new Date()), list = "https://wjw.jiangsu.gov.cn/col/col49511/index.html";
+  const original = collectionHttp.fetch, requests: string[] = [];
+  collectionHttp.fetch = async url => {
+    requests.push(url);
+    if (url.includes("bad.pdf")) throw new Error("attachment unavailable");
+    assert.ok(url.startsWith("https://wjw.jiangsu.gov.cn/"));
+    const html = url === list ? govList([`<li><a href="/art/2026/10/28/art_49511_1.html" title="关于印发实施办法的通知（苏卫〔2026〕1号）">通知</a><span>${day}</span></li>`])
+      : `<meta name="PubDate" content="${day} 08:30"><div id="zoom"><p>现印发实施，请遵照执行。</p><a href="https://outside.example/policy.pdf">外部附件</a><a href="/module/download/downfile.jsp?filename=bad.pdf">办法</a></div>`;
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-jiangsu-health-files");
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.candidates[0]!.bodyStatus, "unconfirmed");
+    assert.equal(result.evidence.errors.length, 1);
+    assert.equal(requests.length, 3);
+  } finally { collectionHttp.fetch = original; }
+});
+
+test("a temporarily unavailable Jiangsu file does not route to the generic body reader", async () => {
+  const day = beijingDate(new Date()), list = "https://wjw.jiangsu.gov.cn/col/col49511/index.html";
+  const original = collectionHttp.fetch;
+  collectionHttp.fetch = async url => {
+    if (url !== list) throw new Error("HTTP 503");
+    const html = govList([`<li><a href="/art/2026/10/28/art_49511_1.html" title="关于印发实施办法的通知（苏卫〔2026〕1号）">通知</a><span>${day}</span></li>`]);
+    return { status: 200, url, body: Buffer.from(html), text: () => html } as never;
+  };
+  try {
+    const result = await previewMedicalSource("web-jiangsu-health-files");
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.candidates[0]!.bodyStatus, "unconfirmed");
+    assert.ok(!result.candidates[0]!.bodyText);
+    assert.equal(result.evidence.errors.length, 1);
+  } finally { collectionHttp.fetch = original; }
+});
+
 test("government XML records retain full titles, source dates and only same-site article URLs", () => {
   const day = "2026-10-20", url = "https://www.nhsa.gov.cn/col/col104/index.html";
   const html = govList([govRow(1, day), govRow(2, day, "https://outside.example/art/a.html"), govRow(3, day, "/col/col104/index.html"), govRow(1, day)]);

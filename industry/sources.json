@@ -2,6 +2,19 @@
   "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改和暂停。字段说明见 docs/customize.md；医疗信息化信源的选择与待补清单见 docs/medical-it.md。",
   "sources": [
     {
+      "id": "web-jiangsu-health-files",
+      "name": "江苏省卫健委 发文通知",
+      "kind": "external",
+      "config": {},
+      "tier": "T1_5",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": ["官方", "政策", "江苏"],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": true
+    },
+    {
       "id": "web-nhsa-interpretation",
       "name": "国家医保局 政策解读",
       "kind": "external",
